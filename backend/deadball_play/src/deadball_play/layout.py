@@ -11,7 +11,7 @@ from deadball_core import GameState
 
 MIN_COLUMNS = 120
 MIN_ROWS = 44
-CONTEXT_MODES = ("field", "narration", "lineups")
+CONTEXT_MODES = ("field", "narration", "lineups", "mlb_stats")
 
 
 @dataclass
@@ -357,7 +357,14 @@ def lineups_panel(
             if player.player_id not in lineup_ids and not player.pitch_die
         ]
         column.extend(("", "BENCH / REMOVED"))
-        column.extend(" " * 6 + _short_name(player.name, table_width - 6) for player in others)
+        column.extend(
+            " " * 6
+            + _short_name(
+                player.name + ("*" if player.appeared_in_source_game else ""),
+                table_width - 6,
+            )
+            for player in others
+        )
         pitchers = [player for player in team.roster if player.pitch_die]
         column.extend(
             (
@@ -392,6 +399,96 @@ def lineups_panel(
         )
         lines.append(_paired_columns(items, content_width, gap=table_gap))
     return lines
+
+
+def mlb_stats_panel(state: GameState, width: int) -> list[str]:
+    """Render generator-source season statistics for every rostered player."""
+    content_width = max(1, width - 2)
+    table_gap = 2
+    table_width = max(22, (content_width - table_gap) // 2)
+    team_columns = []
+    for side in ("away", "home"):
+        team = getattr(state.source.teams, side)
+        lineup_ids = {entry.player_id for entry in team.lineup}
+        hitters = [player for player in team.roster if not player.pitch_die]
+        pitchers = [player for player in team.roster if player.pitch_die]
+        hitter_header = "PLAYER   G  AVG  OBP HR 2B SB"
+        pitcher_header = "PITCHER GS    IP  ERA  K/9 BB/9 GB%"
+        hitter_name_width = max(6, table_width - len(hitter_header) + len("PLAYER"))
+        pitcher_name_width = max(7, table_width - len(pitcher_header) + len("PITCHER"))
+        column = [team.short_name.upper().center(table_width), "MLB HITTER STATS"]
+        column.append("PLAYER".ljust(hitter_name_width) + "   G  AVG  OBP HR 2B SB")
+        for player in hitters:
+            stats = player.mlb_stats
+            name = player.name + (
+                "*"
+                if player.player_id not in lineup_ids
+                and player.appeared_in_source_game
+                else ""
+            )
+            column.append(
+                _short_name(name, hitter_name_width).ljust(hitter_name_width)
+                + f" {_whole(stats.games if stats else None):>3}"
+                + f" {_average(stats.average if stats else None):>4}"
+                + f" {_average(stats.on_base_percentage if stats else None):>4}"
+                + f" {_whole(stats.home_runs if stats else None):>2}"
+                + f" {_whole(stats.doubles if stats else None):>2}"
+                + f" {_whole(stats.stolen_bases if stats else None):>2}"
+            )
+        column.extend(("", "MLB PITCHER STATS"))
+        column.append(
+            "PITCHER".ljust(pitcher_name_width) + " GS    IP  ERA  K/9 BB/9 GB%"
+        )
+        for player in pitchers:
+            stats = player.mlb_stats
+            column.append(
+                _short_name(player.name, pitcher_name_width).ljust(pitcher_name_width)
+                + f" {_whole(stats.games_started if stats else None):>2}"
+                + f" {_innings(stats.innings_pitched if stats else None):>5}"
+                + f" {_decimal(stats.era if stats else None):>4}"
+                + f" {_decimal(stats.strikeouts_per_nine if stats else None):>4}"
+                + f" {_decimal(stats.walks_per_nine if stats else None):>4}"
+                + f" {_percent(stats.ground_ball_percentage if stats else None):>3}"
+            )
+        team_columns.append(column)
+    lines = [_ends("MLB STATS", "[Tab: Field]", content_width), ""]
+    for index in range(max(map(len, team_columns))):
+        items = tuple(
+            column[index] if index < len(column) else "" for column in team_columns
+        )
+        lines.append(_paired_columns(items, content_width, gap=table_gap))
+    lines.extend(("", "* Appeared as a substitute in the source MLB game"))
+    return lines
+
+
+def _whole(value: float | None) -> str:
+    return "-" if value is None else str(int(round(value)))
+
+
+def _average(value: float | None) -> str:
+    return "-" if value is None else f"{value:.3f}".lstrip("0")
+
+
+def _decimal(value: float | None) -> str:
+    return "-" if value is None else f"{value:.2f}"
+
+
+def _innings(value: float | None) -> str:
+    if value is None:
+        return "-"
+    whole = int(value)
+    outs = round((value - whole) * 3)
+    if outs == 3:
+        whole += 1
+        outs = 0
+    return f"{whole}.{outs}"
+
+
+def _percent(value: float | None) -> str:
+    if value is None:
+        return "-"
+    percent = value * 100 if abs(value) <= 1 else value
+    return f"{percent:.0f}"
 
 
 def _panel_lines(lines: Iterable[str], width: int) -> list[str]:

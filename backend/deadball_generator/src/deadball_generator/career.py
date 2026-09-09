@@ -4,6 +4,7 @@ from __future__ import annotations
 from datetime import date, datetime, timezone
 import json
 from pathlib import Path
+from urllib.parse import urlencode
 
 import requests
 
@@ -11,6 +12,51 @@ from deadball_generator import cache_policy
 from deadball_generator.rules import number
 
 CACHE_VERSION = 1
+BATCH_SIZE = 20
+
+
+def _cache_path(player_id: int, season: int, cache_dir: Path) -> Path:
+    return cache_dir / f"mlb-{player_id}-{season}-v{CACHE_VERSION}.json"
+
+
+def _valid_payload(payload) -> bool:
+    if not isinstance(payload, dict) or not isinstance(payload.get("stats"), list) or not payload["stats"]:
+        return False
+    for block in payload["stats"]:
+        if (not isinstance(block, dict) or not isinstance(block.get("group"), dict)
+                or not isinstance(block.get("splits"), list)):
+            return False
+        if not all(isinstance(split, dict) and isinstance(split.get("stat"), dict) for split in block["splits"]):
+            return False
+        if (block.get("totalSplits") or len(block["splits"])) > len(block["splits"]):
+            return False
+    return True
+
+
+def _cached_payload(player_id: int, season: int, cache_dir: Path, *, allow_stale=False):
+    try:
+        cached = json.loads(_cache_path(player_id, season, cache_dir).read_text())
+        usable = allow_stale or cache_policy.is_fresh(
+            season, cached["fetched_at"], now=datetime.now(timezone.utc).timestamp(),
+        )
+        if cached["version"] == CACHE_VERSION and usable and _valid_payload(cached["payload"]):
+            return cached["payload"]
+    except (OSError, ValueError, KeyError, TypeError, AttributeError):
+        pass
+    return None
+
+
+def _store_payload(player_id: int, season: int, cache_dir: Path, payload) -> bool:
+    try:
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        _cache_path(player_id, season, cache_dir).write_text(json.dumps({
+            "version": CACHE_VERSION,
+            "fetched_at": datetime.now(timezone.utc).timestamp(),
+            "payload": payload,
+        }))
+        return True
+    except OSError:
+        return False
 
 
 def snapshot_at(player_id, season, cache_dir):
@@ -150,38 +196,87 @@ def load_history(player_id, season, cache_dir: Path, *, allow_network=False, ref
     parsed_id = number(player_id)
     if parsed_id is None or parsed_id <= 0 or not parsed_id.is_integer():
         return {}
-    path = cache_dir / f"mlb-{int(player_id)}-{season}-v{CACHE_VERSION}.json"
-    if path.exists() and (not refresh or not allow_network):
-        try:
-            cached = json.loads(path.read_text())
-            usable = cache_policy.is_fresh(
-                season, cached["fetched_at"], now=datetime.now(timezone.utc).timestamp(),
-            ) or not allow_network
-            if cached["version"] == CACHE_VERSION and usable:
-                return summarize(cached["payload"], season)
-        except (ValueError, KeyError, TypeError, AttributeError, OSError):
-            pass
+    player_id = int(parsed_id)
+    if not refresh or not allow_network:
+        payload = _cached_payload(player_id, season, cache_dir, allow_stale=not allow_network)
+        if payload is not None:
+            return summarize(payload, season)
     if not allow_network:
         return {}
-    url = f"https://statsapi.mlb.com/api/v1/people/{int(player_id)}/stats?stats=yearByYear&group=hitting,pitching,fielding&sportIds=1&gameType=R"
+    url = f"https://statsapi.mlb.com/api/v1/people/{player_id}/stats?stats=yearByYear&group=hitting,pitching,fielding&sportIds=1&gameType=R"
     try:
         response = fetch(url) if fetch else requests.get(url, timeout=30)
         response.raise_for_status()
         payload = response.json()
-        if not isinstance(payload, dict) or not isinstance(payload.get("stats"), list) or not payload["stats"]:
+        if not _valid_payload(payload):
             return {}
-        for block in payload["stats"]:
-            if not isinstance(block, dict) or not isinstance(block.get("splits"), list):
-                return {}
-            if not all(isinstance(s, dict) and isinstance(s.get("stat"), dict) for s in block["splits"]):
-                return {}
-            if (block.get("totalSplits") or len(block["splits"])) > len(block["splits"]):
-                return {}
         summary = summarize(payload, season)
         if not summary["hitter"] and not summary["pitcher"]:
             return {}
-        cache_dir.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps({"version": CACHE_VERSION, "fetched_at": datetime.now(timezone.utc).timestamp(), "payload": payload}))
-        return summary
+        return summary if _store_payload(player_id, season, cache_dir, payload) else {}
     except (requests.RequestException, ValueError, KeyError, TypeError, AttributeError, OSError):
         return {}
+
+
+def load_histories(player_ids, season, cache_dir: Path, *, allow_network=False, refresh=False,
+                   fetch=None, batch_size=BATCH_SIZE):
+    """Load many histories with one request per chunk and per-player fallback.
+
+    Successful batch results retain the existing individual cache format so
+    offline and single-player callers continue to behave identically.
+    """
+    normalized = []
+    for raw_id in player_ids:
+        parsed_id = number(raw_id)
+        if parsed_id is not None and parsed_id > 0 and parsed_id.is_integer() and int(parsed_id) not in normalized:
+            normalized.append(int(parsed_id))
+    if not allow_network:
+        return {
+            player_id: load_history(player_id, season, cache_dir, allow_network=False, refresh=refresh, fetch=fetch)
+            for player_id in normalized
+        }
+
+    histories = {}
+    pending = []
+    for player_id in normalized:
+        payload = None if refresh else _cached_payload(player_id, season, cache_dir)
+        if payload is None:
+            pending.append(player_id)
+        else:
+            histories[player_id] = summarize(payload, season)
+
+    chunk_size = max(1, int(batch_size))
+    for start in range(0, len(pending), chunk_size):
+        chunk = pending[start:start + chunk_size]
+        params = {
+            "personIds": ",".join(str(player_id) for player_id in chunk),
+            "hydrate": "stats(group=[hitting,pitching,fielding],type=[yearByYear],sportIds=[1])",
+        }
+        url = "https://statsapi.mlb.com/api/v1/people?" + urlencode(params)
+        completed = set()
+        try:
+            response = fetch(url) if fetch else requests.get(url, timeout=30)
+            response.raise_for_status()
+            people = response.json().get("people", [])
+            for person in people:
+                player_id = int(person.get("id"))
+                if player_id not in chunk:
+                    continue
+                payload = {"stats": person.get("stats")}
+                summary = summarize(payload, season) if _valid_payload(payload) else {}
+                if (summary.get("hitter") or summary.get("pitcher")) and _store_payload(
+                    player_id, season, cache_dir, payload,
+                ):
+                    histories[player_id] = summary
+                    completed.add(player_id)
+        except (requests.RequestException, ValueError, KeyError, TypeError, AttributeError, OSError):
+            pass
+
+        # Preserve successful neighbors if one player is absent or malformed.
+        for player_id in chunk:
+            if player_id not in completed:
+                histories[player_id] = load_history(
+                    player_id, season, cache_dir, allow_network=True, refresh=True, fetch=fetch,
+                )
+
+    return {player_id: histories.get(player_id, {}) for player_id in normalized}

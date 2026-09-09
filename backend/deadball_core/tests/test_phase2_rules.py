@@ -151,15 +151,18 @@ def test_resolver_applies_same_handed_adjustment_before_rolling():
     assert result.dice.mss == 42
 
 
-def test_enabled_oddity_is_pending_without_advancing_state():
+def test_enabled_oddity_rolls_table_and_can_leave_at_bat_pending():
     state = initial_state()
     source = replace(state.source, rules=replace(state.source.rules, oddities=True))
     state = replace(state, source=source)
-    result = resolve_swing(state, FixedDice([93, 6]))
+    result = resolve_swing(state, FixedDice([93, 6, 2, 2, 50]))
 
-    assert result.event.event_type == "oddity"
+    assert result.event.event_type == "oddity_rain_delay"
+    assert result.event.oddity_name == "Rain Delay"
     assert result.event.resolved is False
-    assert result.new_state is state
+    assert result.new_state == state
+    assert result.dice.oddity_rolls == (2, 2)
+    assert result.dice.oddity_detail_rolls == (("rain_delay_d100", 50),)
 
 
 def test_negative_pitch_die_is_subtracted():

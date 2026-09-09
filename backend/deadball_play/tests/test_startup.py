@@ -1,6 +1,14 @@
 import json
+from datetime import date
+from pathlib import Path
 
-from deadball_play.startup import generate_web_artifacts, startup_arguments
+from deadball_play.startup import (
+    GeneratedArtifacts,
+    _input_with_default,
+    generate_web_artifacts,
+    startup_arguments,
+)
+from deadball_play.tui import main
 
 
 class FakeResponse:
@@ -17,14 +25,129 @@ class FakeResponse:
         return self.payload
 
 
+def test_date_default_is_visible_in_portable_input_fallback():
+    prompts = []
+
+    def fake_input(prompt):
+        prompts.append(prompt)
+        return ""
+
+    assert _input_with_default(fake_input, "Game date: ", "2026-09-09") == "2026-09-09"
+    assert prompts == ["Game date: [2026-09-09]: "]
+
+
 def test_start_screen_maps_demo_and_resume_choices():
     output = []
-    demo = startup_arguments(lambda prompt: "5", output.append)
+    demo = startup_arguments(lambda prompt: "4", output.append)
     answers = iter(("3", "saves/night-game.json"))
     resume = startup_arguments(lambda prompt: next(answers), output.append)
 
-    assert demo == ["--demo", "--save", "saves/demo-game.json"]
-    assert resume == ["--resume", "saves/night-game.json"]
+    assert demo == [
+        "--demo",
+        "--save",
+        "saves/demo-game.save.json",
+        "--return-to-menu",
+    ]
+    assert resume == ["--resume", "saves/night-game.json", "--return-to-menu"]
+    assert any(line.startswith("┌") for line in output)
+    assert any("│ DEADBALL PLAY" in line for line in output)
+    assert not any("cached by Deadball Web" in line for line in output)
+
+
+def test_start_screen_browses_web_games_with_generator_options(monkeypatch):
+    monkeypatch.setattr(
+        "deadball_play.startup.list_web_games",
+        lambda game_date, base_url: (
+            {
+                "game_id": 123,
+                "away_team": "St Louis Cardinals",
+                "home_team": "Los Angeles Dodgers",
+            },
+        ),
+    )
+    answers = iter(("1", "", "1", "2", "y", "", "g"))
+    prompts = []
+
+    def answer(prompt):
+        prompts.append(prompt)
+        return next(answers)
+
+    arguments = startup_arguments(
+        answer,
+        lambda message: None,
+        base_url="http://example.test/api",
+        today=date(2026, 9, 6),
+    )
+
+    assert arguments == [
+        "--generate-only",
+        "123",
+        "--web-base-url",
+        "http://example.test/api",
+        "--trait-mode",
+        "sabr",
+        "--scorecard-side",
+        "both",
+        "--away-team-label",
+        "St Louis Cardinals",
+        "--home-team-label",
+        "Los Angeles Dodgers",
+        "--force-generate",
+        "--return-to-menu",
+    ]
+    assert any("Game date: [2026-09-06]" in prompt for prompt in prompts)
+
+
+def test_generate_and_play_collects_control_for_each_team(monkeypatch):
+    monkeypatch.setattr(
+        "deadball_play.startup.list_web_games",
+        lambda game_date, base_url: (
+            {"game_id": 321, "away_team": "Visitors", "home_team": "Hosts"},
+        ),
+    )
+    answers = iter(("1", "", "1", "", "n", "", "p", "c", "h"))
+
+    arguments = startup_arguments(
+        lambda prompt: next(answers),
+        lambda message: None,
+        today=date(2026, 9, 7),
+    )
+
+    assert arguments[-5:-1] == [
+        "--away-control",
+        "computer",
+        "--home-control",
+        "human",
+    ]
+    assert arguments[-1] == "--return-to-menu"
+
+
+def test_start_screen_loads_generated_json_from_saves(tmp_path):
+    saves = tmp_path / "saves"
+    saves.mkdir()
+    generated = saves / "2026-09-06-Away-at-Home-DeadballPlay.json"
+    generated.write_text("{}", encoding="utf-8")
+    (saves / "ignored.save.json").write_text("{}", encoding="utf-8")
+    (saves / "another-session.json").write_text("{}", encoding="utf-8")
+    answers = iter(("2", "1", "c", "h"))
+
+    arguments = startup_arguments(
+        lambda prompt: next(answers),
+        lambda message: None,
+        root=tmp_path,
+    )
+
+    assert arguments == [
+        "--game",
+        str(generated),
+        "--save",
+        "saves/20260906AwayatHomeDeadballPlay.save.json",
+        "--away-control",
+        "computer",
+        "--home-control",
+        "human",
+        "--return-to-menu",
+    ]
 
 
 def test_web_generation_writes_shell_safe_game_and_scorecard_paths(
@@ -39,9 +162,12 @@ def test_web_generation_writes_shell_safe_game_and_scorecard_paths(
         },
     }
 
+    requests = []
+
     def fake_urlopen(request, timeout):
         url = request.full_url if hasattr(request, "full_url") else request
-        if url.endswith("scorecard.pdf?side=home"):
+        requests.append(request)
+        if url.endswith("scorecard.pdf?side=away"):
             return FakeResponse(b"%PDF-test")
         if url.endswith("play.json"):
             return FakeResponse(json.dumps(game).encode())
@@ -49,12 +175,146 @@ def test_web_generation_writes_shell_safe_game_and_scorecard_paths(
 
     monkeypatch.setattr("deadball_play.startup.urlopen", fake_urlopen)
 
-    result = generate_web_artifacts("123", root=tmp_path)
+    result = generate_web_artifacts(
+        "123",
+        root=tmp_path,
+        trait_mode="adaptive",
+        force=True,
+        scorecard_side="away",
+    )
 
     assert " " not in result.game_path.name
     assert " " not in result.scorecard_path.name
-    assert result.game_path.parent.name == "generated-games"
-    assert result.scorecard_path.parent.name == "scorecards"
+    assert result.game_path.parent.name == "saves"
+    assert result.scorecard_path.parent.name == "saves"
     assert result.save_path.parent.name == "saves"
     assert json.loads(result.game_path.read_text())["schema_version"] == 1
     assert result.scorecard_path.read_bytes() == b"%PDF-test"
+    generate_request = requests[0]
+    assert generate_request.method == "POST"
+    assert json.loads(generate_request.data) == {
+        "force": True,
+        "trait_mode": "adaptive",
+    }
+
+
+def test_web_generation_downloads_both_scorecard_sides_by_default(
+    tmp_path, monkeypatch
+):
+    game = {
+        "schema_version": 1,
+        "game": {"game_date": "2026-09-06"},
+        "teams": {
+            "away": {"name": "Away Team"},
+            "home": {"name": "Home Team"},
+        },
+    }
+    requested_urls = []
+    progress = []
+
+    def fake_urlopen(request, timeout):
+        url = request.full_url if hasattr(request, "full_url") else request
+        requested_urls.append(url)
+        if url.endswith("play.json"):
+            return FakeResponse(json.dumps(game).encode())
+        if "scorecard.pdf" in url:
+            side = url.rsplit("=", 1)[-1]
+            return FakeResponse(f"%PDF-{side}".encode())
+        return FakeResponse(b"{}")
+
+    monkeypatch.setattr("deadball_play.startup.urlopen", fake_urlopen)
+
+    result = generate_web_artifacts("456", root=tmp_path, progress_func=progress.append)
+
+    assert [path.name for path in result.scorecard_paths] == [
+        "2026-09-06-AwayTeam-at-HomeTeam-DeadballPlay-home.pdf",
+        "2026-09-06-AwayTeam-at-HomeTeam-DeadballPlay-away.pdf",
+    ]
+    assert [path.read_bytes() for path in result.scorecard_paths] == [
+        b"%PDF-home",
+        b"%PDF-away",
+    ]
+    assert any(url.endswith("scorecard.pdf?side=home") for url in requested_urls)
+    assert any(url.endswith("scorecard.pdf?side=away") for url in requested_urls)
+    assert progress == [
+        "[#-----] 1/6 Generating Away team ratings and roster...",
+        "[##----] 2/6 Generating Home team ratings and roster...",
+        "[###---] 3/6 Downloading game JSON...",
+        "[####--] 4/6 Downloading home PDF score sheet...",
+        "[#####-] 5/6 Downloading away PDF score sheet...",
+        "[######] 6/6 Saving artifact bundle...",
+    ]
+
+
+def test_generate_only_downloads_bundle_without_starting_game(monkeypatch, capsys):
+    artifacts = GeneratedArtifacts(
+        Path("saves/game.json"),
+        Path("saves/game.pdf"),
+        Path("saves/game.save.json"),
+    )
+    calls = []
+
+    def fake_generate(game_id, **options):
+        calls.append((game_id, options))
+        return artifacts
+
+    monkeypatch.setattr("deadball_play.startup.generate_web_artifacts", fake_generate)
+
+    assert main(
+        [
+            "--generate-only",
+            "123",
+            "--trait-mode",
+            "sabr",
+            "--scorecard-side",
+            "away",
+            "--force-generate",
+        ]
+    ) == 0
+    assert calls == [
+        (
+            "123",
+            {
+                "base_url": "http://127.0.0.1:8000/api",
+                "trait_mode": "sabr",
+                "force": True,
+                "scorecard_side": "away",
+                "progress_func": print,
+                "away_team_label": "Away team",
+                "home_team_label": "Home team",
+            },
+        )
+    ]
+    assert "Game JSON: saves/game.json" in capsys.readouterr().out
+
+    monkeypatch.setattr("builtins.input", lambda prompt: "")
+    menu_calls = []
+
+    def fake_startup():
+        menu_calls.append(True)
+        return None
+
+    monkeypatch.setattr("deadball_play.startup.startup_arguments", fake_startup)
+    assert main(["--generate-only", "123", "--return-to-menu"]) == 0
+    assert menu_calls == [True]
+
+
+def test_start_screen_generation_failure_returns_to_menu(monkeypatch, capsys):
+    def fail_generate(game_id, **options):
+        raise TimeoutError("timed out")
+
+    menu_calls = []
+    monkeypatch.setattr("deadball_play.startup.generate_web_artifacts", fail_generate)
+    monkeypatch.setattr("builtins.input", lambda prompt: "")
+
+    def fake_startup():
+        menu_calls.append(True)
+        return None
+
+    monkeypatch.setattr("deadball_play.startup.startup_arguments", fake_startup)
+
+    assert main(["--generate-game", "123", "--return-to-menu"]) == 0
+    output = capsys.readouterr().out
+    assert "Could not continue: timed out" in output
+    assert "usage: deadball-play" not in output
+    assert menu_calls == [True]

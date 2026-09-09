@@ -18,6 +18,9 @@ class DiceRecord:
     modified_hit_table_roll: int | None = None
     defense_roll: int | None = None
     modified_defense_roll: int | None = None
+    oddity_rolls: tuple[int, int] | None = None
+    oddity_total: int | None = None
+    oddity_detail_rolls: tuple[tuple[str, int], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -80,6 +83,8 @@ class PlayEvent:
     runner_moves: tuple[RunnerMove, ...] = ()
     runs_scored: int = 0
     out_type: str | None = None
+    oddity_name: str | None = None
+    details: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)

@@ -46,6 +46,7 @@ class Game(BaseModel):
     id: int
     game_id: str
     game_date: date
+    game_type: Optional[str] = None
     home_team: Optional[str] = None
     home_team_short: Optional[str] = None
     away_team: Optional[str] = None

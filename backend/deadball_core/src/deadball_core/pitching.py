@@ -64,6 +64,12 @@ def apply_pitcher_progress(
         current_inning_batters_faced=(
             progress.current_inning_batters_faced + int(plate_appearance)
         ),
+        batters_faced_since_entry=(
+            progress.batters_faced_since_entry + int(plate_appearance)
+        ),
+        inning_end_removal_window=(
+            False if plate_appearance else progress.inning_end_removal_window
+        ),
         current_inning_strikeouts=(
             progress.current_inning_strikeouts + int(strikeout)
         ),
@@ -164,6 +170,7 @@ def _complete_inning(
         bases_loaded_no_out_jam=False,
         runs_since_jam=0,
         late_run_reduction_applied=False,
+        inning_end_removal_window=True,
     )
 
 

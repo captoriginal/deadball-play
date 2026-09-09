@@ -9,6 +9,7 @@ from deadball_core import (
     legal_actions,
     load_generated_game,
     pinch_hit,
+    pinch_run,
     resolve_steal,
     resolve_swing,
 )
@@ -81,6 +82,45 @@ def test_tie_after_nine_starts_the_tenth():
 
     assert not extra.is_final
     assert (extra.inning, extra.half, extra.outs) == (10, "top", 0)
+    assert extra.bases == (None, "away-h9", None)
+    substituted = pinch_run(extra, "2B", "away-bench").new_state
+    assert substituted.bases == (None, "away-bench", None)
+    assert substituted.away.lineup[8] == "away-bench"
+
+
+def test_regular_season_extra_half_uses_player_before_due_batter():
+    state = game_state(
+        inning=10,
+        half="top",
+        outs=2,
+        away_score=4,
+        home_score=4,
+        home=replace(game_state().home, batting_order_index=4),
+    )
+
+    bottom = record_out(state)
+
+    assert (bottom.inning, bottom.half, bottom.outs) == (10, "bottom", 0)
+    assert bottom.bases == (None, "home-h4", None)
+
+
+@pytest.mark.parametrize("game_type", ["D", "L", "W", "C", "F", "S", "E"])
+def test_non_regular_mlb_games_start_extra_innings_with_empty_bases(game_type):
+    data = canonical_game()
+    data["game"]["game_type"] = game_type
+    state = initialize_game(load_generated_game(data))
+    state = replace(
+        state,
+        inning=9,
+        half="bottom",
+        outs=2,
+        away_score=4,
+        home_score=4,
+    )
+
+    extra = record_out(state)
+
+    assert (extra.inning, extra.half) == (10, "top")
     assert extra.bases == (None, None, None)
 
 

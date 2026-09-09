@@ -23,10 +23,18 @@ def load_cached_game(game_id: str, database: str | Path) -> GeneratedGame:
     try:
         connection = sqlite3.connect(f"file:{database_path}?mode=ro", uri=True)
         connection.row_factory = sqlite3.Row
+        columns = {
+            row[1]
+            for row in connection.execute("PRAGMA table_info(game)").fetchall()
+        }
+        game_type_column = (
+            "g.game_type" if "game_type" in columns else "NULL AS game_type"
+        )
         with connection:
             row = connection.execute(
-                """
-                SELECT g.game_id, g.game_date, g.away_team, g.home_team,
+                f"""
+                SELECT g.game_id, g.game_date, {game_type_column},
+                       g.away_team, g.home_team,
                        g.away_team_short, g.home_team_short, gg.stats,
                        gr.payload AS raw_payload
                 FROM game AS g
@@ -50,6 +58,7 @@ def load_cached_game(game_id: str, database: str | Path) -> GeneratedGame:
     arguments = {
         "game_id": row["game_id"],
         "game_date": row["game_date"],
+        "game_type": row["game_type"],
         "away_team": row["away_team"],
         "home_team": row["home_team"],
         "away_short": row["away_team_short"],

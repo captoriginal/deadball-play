@@ -23,6 +23,37 @@ class PitchDieAdjustment:
 
 
 @dataclass(frozen=True)
+class InjuryRecord:
+    player_id: str
+    severity: str
+    location: str
+    must_leave: bool = False
+    batting_penalty: int = 0
+    pitch_die_penalty: int = 0
+    traits_nullified: bool = False
+    games_out: int = 0
+
+
+@dataclass(frozen=True)
+class PitcherOddityModifier:
+    player_id: str
+    levels: int
+    inning: int
+    half: str
+
+
+@dataclass(frozen=True)
+class OddityState:
+    last_out_fielder_id: str | None = None
+    poor_defenders: tuple[str, ...] = ()
+    home_batting_penalty_inning: int | None = None
+    steal_bonus_batter_id: str | None = None
+    catcher_steal_bonus_team_id: str | None = None
+    pitcher_modifiers: tuple[PitcherOddityModifier, ...] = ()
+    injuries: tuple[InjuryRecord, ...] = ()
+
+
+@dataclass(frozen=True)
 class PitcherState:
     player_id: str
     role: str
@@ -34,6 +65,9 @@ class PitcherState:
     current_inning_runs: int = 0
     previous_inning_runs: int | None = None
     current_inning_batters_faced: int = 0
+    batters_faced_since_entry: int = 0
+    inning_end_removal_window: bool = False
+    removal_exception: str | None = None
     current_inning_strikeouts: int = 0
     consecutive_scoreless_innings: int = 0
     bases_loaded_no_out_jam: bool = False
@@ -77,6 +111,7 @@ class GameState:
     away: InitialTeamState
     home: InitialTeamState
     result: GameResult | None = None
+    oddity_state: OddityState = OddityState()
 
     @property
     def is_final(self) -> bool:

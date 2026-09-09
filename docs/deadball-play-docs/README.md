@@ -12,6 +12,9 @@ The intended minimal setup is:
 
 Current status: **Version 1 acceptance, installation, and three-column TUI complete**
 
+Regular-season MLB games use the automatic runner on second in every extra
+half-inning; postseason games continue with empty bases.
+
 ## Repository Strategy
 
 Deadball Play should be developed **inside the existing `deadball-web` repository**, not in a new repository.
@@ -184,6 +187,9 @@ Core project documents:
 - [`phase-15-review.md`](phase-15-review.md) — laptop-oriented three-column terminal interface and navigation
 - [`phase-16-review.md`](phase-16-review.md) — scoreboard, result footer, context tabs, start screen, and release playtest fixes
 - [`phase-17-review.md`](phase-17-review.md) — centered outcome flow, computer-turn controls, expanded box stats, and narration/rules refinements
+- [`phase-19-review.md`](phase-19-review.md) — MLB regular-season automatic runner, game-type propagation, and compatibility migration
+- [`phase-20-review.md`](phase-20-review.md) — optional Oddities resolution and MLB-style pitcher minimum
+- [`phase-20.5-review.md`](phase-20.5-review.md) — Web-backed start-screen generation and paired save artifacts
 - [`version-1-acceptance.md`](version-1-acceptance.md) — release acceptance evidence and known legacy test exclusions
 - [`generator-backlog.md`](generator-backlog.md) — deferred generator and contract-integration work
 

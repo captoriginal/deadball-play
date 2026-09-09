@@ -31,6 +31,7 @@ def offline_mlb(monkeypatch):
                 "games": [
                     {
                         "gamePk": 1001,
+                        "gameType": "R",
                         "teams": {
                             "away": {
                                 "team": {
@@ -49,6 +50,7 @@ def offline_mlb(monkeypatch):
                     },
                     {
                         "gamePk": 1002,
+                        "gameType": "R",
                         "teams": {
                             "away": {
                                 "team": {
@@ -121,6 +123,7 @@ def test_list_games_caches(client: TestClient):
     data = resp.json()
     assert data["count"] == 2
     assert data["cached"] is False
+    assert all(game["game_type"] == "R" for game in data["items"])
 
     resp_again = client.get("/api/games", params={"date": "2024-04-01"})
     assert resp_again.status_code == 200

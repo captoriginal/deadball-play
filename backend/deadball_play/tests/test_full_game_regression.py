@@ -54,12 +54,12 @@ REGRESSION_GAMES = (
     ),
     (
         27,
-        97,
+        93,
         10,
         "extra_innings",
-        10,
+        9,
         3,
-        "1d1309c59227e0a8226aab05a95bf93f9f446f829ebbcfb82d332570a522f440",
+        "f85bb78df9075ba6aa9991dd7a470c7a83ed31318d03adb36c2ff81b6b73a0fe",
     ),
     (
         24,
@@ -327,16 +327,16 @@ def test_daring_managers_complete_game_without_human_strategy_input(tmp_path):
     text = output.getvalue()
 
     assert session.state.is_final
-    assert (session.state.away_score, session.state.home_score) == (2, 0)
+    assert (session.state.away_score, session.state.home_score) == (0, 1)
     assert session.state.result.inning == 10
-    assert len(event_types) == 76
+    assert len(event_types) == 71
     assert hashlib.sha256("|".join(event_types).encode()).hexdigest() == (
-        "b740621346dd009960c525f068bb7fabd52b50bd076c4d002de86790492dec61"
+        "dd30a91bc85083f3014b3cb6a312fbb8f403de3bc8516c11f4b1fdbee195e111"
     )
-    assert text.count("manager: Daring") == 23
+    assert text.count("manager: Daring") == 25
     assert text.count("pitching decision") == 8
-    assert text.count("chooses Swing") == 45
-    assert text.count("Press Enter when scored.") == 76
+    assert text.count("chooses Swing") == 40
+    assert text.count("Press Enter when scored.") == 71
 
 
 def test_midgame_resume_reaches_identical_final_game(tmp_path):

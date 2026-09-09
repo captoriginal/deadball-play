@@ -160,6 +160,8 @@ Support:
 - extra innings
 - home team not batting when already ahead after the top of the ninth or later
 - walk-off endings where normal baseball game state makes the winner certain
+- MLB regular-season automatic runners in extra innings, selected from the
+  active batting order; postseason extra innings remain empty
 
 ### Solo Opponent
 
@@ -181,9 +183,13 @@ The rulebook allows Oddity results associated with extreme MSS values.
 
 Status:
 
-**Optional / later implementation**
+**Supported optional rule**
 
-When disabled, use the rulebook's non-Oddity treatment.
+It is enabled by default. Set `oddities: false` in generated-game rules or use
+`--no-oddities` for a new terminal game to disable it deliberately. When
+disabled, the engine uses the rulebook's non-Oddity treatment. When enabled,
+MSS 1 and 99 roll the complete 2d10 table, including injuries and
+persistent/at-bat modifiers.
 
 ### Designated Hitter
 
@@ -201,9 +207,15 @@ The rulebook notes that Deadball itself does not require pitchers to face a mini
 
 Status:
 
-**Optional application rule**
+**Supported optional application rule**
 
-It is not part of baseline Deadball behavior.
+It is enabled by default as Deadball Play's modern-MLB procedure. Set
+`three_batter_minimum: false` in generated-game rules or use
+`--no-three-batter-minimum` for a new terminal game to disable it. A pitcher
+must face three batters in the appearance, but may be removed when the
+offensive side is retired or for an incapacitating injury/illness. If retained
+for the next inning before reaching three, the remaining batter count still
+applies.
 
 ### Other Explicit Modern-Era Optional Systems
 

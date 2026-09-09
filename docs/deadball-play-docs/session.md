@@ -492,7 +492,7 @@ For example:
 rules:
   edition: second
   era: modern
-  oddities: false
+  oddities: true
   injuries: false
   managerial_daring: true
 ```

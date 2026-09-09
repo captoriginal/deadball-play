@@ -46,7 +46,12 @@ def finish_action_state(
     if original.half == "top":
         if original.inning >= 9 and updated.home_score > updated.away_score:
             return _finalize(updated, _completed_game_ending(original.inning))
-        return replace(updated, half="bottom", outs=0, bases=EMPTY_BASES)
+        return replace(
+            updated,
+            half="bottom",
+            outs=0,
+            bases=_half_inning_bases(updated, original.inning, "home"),
+        )
 
     if original.inning >= 9 and updated.home_score != updated.away_score:
         return _finalize(updated, _completed_game_ending(original.inning))
@@ -55,8 +60,23 @@ def finish_action_state(
         inning=original.inning + 1,
         half="top",
         outs=0,
-        bases=EMPTY_BASES,
+        bases=_half_inning_bases(updated, original.inning + 1, "away"),
     )
+
+
+def _half_inning_bases(
+    state: GameState,
+    inning: int,
+    offense: str,
+) -> tuple[str | None, str | None, str | None]:
+    """Return MLB's automatic runner for regular-season extra innings."""
+    game_type = state.source.game.game_type
+    regular_season = game_type is None or game_type.upper() == "R"
+    if inning < 10 or not regular_season:
+        return EMPTY_BASES
+    team = getattr(state, offense)
+    runner_index = (team.batting_order_index - 1) % len(team.lineup)
+    return None, team.lineup[runner_index], None
 
 
 def _is_walk_off(updated: GameState, original: GameState) -> bool:

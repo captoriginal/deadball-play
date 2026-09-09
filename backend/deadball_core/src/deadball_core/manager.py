@@ -166,6 +166,10 @@ def pitching_opportunity(
     """Return the next documented pitcher-use decision without rolling dice."""
     if state.is_final:
         return None
+    from .substitutions import pitcher_may_be_replaced
+
+    if not pitcher_may_be_replaced(state, side):
+        return None
     team, _ = _team_and_data(state, side)
     pitcher = team.pitcher_state
     if pitcher is None or not team.bullpen:

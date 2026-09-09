@@ -7,7 +7,10 @@ import sys
 import pytest
 
 from deadball_core import (
+    InjuryRecord,
+    OddityState,
     PitchDieAdjustment,
+    PitcherOddityModifier,
     RandomDice,
     initialize_game,
     load_generated_game,
@@ -64,6 +67,36 @@ def test_new_game_round_trips_before_first_pitch(tmp_path):
     assert document["save_format_version"] == SAVE_FORMAT_VERSION
     assert document["ruleset"] == RULESET_ID
     assert not list(path.parent.glob("*.tmp"))
+
+
+def test_active_oddities_state_round_trips(tmp_path):
+    state = initial_state()
+    state = replace(
+        state,
+        oddity_state=OddityState(
+            last_out_fielder_id="home-h6",
+            poor_defenders=("home-h6",),
+            home_batting_penalty_inning=2,
+            steal_bonus_batter_id="away-h1",
+            catcher_steal_bonus_team_id=state.home.team_id,
+            pitcher_modifiers=(
+                PitcherOddityModifier("home-sp", -1, 1, "top"),
+            ),
+            injuries=(
+                InjuryRecord(
+                    "away-h1",
+                    "superficial",
+                    "wrist",
+                    batting_penalty=5,
+                    traits_nullified=True,
+                ),
+            ),
+        ),
+    )
+    path = tmp_path / "oddities.json"
+    seeded_session(state=state).save(path)
+
+    assert GameSession.load(path).state == state
 
 
 def test_completed_action_autosaves_structured_history_and_pending_confirmation(

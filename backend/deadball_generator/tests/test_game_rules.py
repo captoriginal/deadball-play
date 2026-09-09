@@ -288,13 +288,16 @@ def test_missing_player_fetches_history_once_for_both_roles(tmp_path, monkeypatc
     two_way["stats"]["pitching"] = {"inningsPitched": "1.0"}
     path = tmp_path / "two-way.json"
     path.write_text(json.dumps({"teams": {"home": {
-        "team": {"name": "Dodgers", "abbreviation": "LAD"}, "players": {"10": two_way},
+        "team": {"name": "Dodgers", "abbreviation": "LAD"},
+        "players": {"10": two_way}, "batters": [10], "pitchers": [10],
     }}}))
     monkeypatch.setattr(game, "load_deadball_source", Mock(return_value=pd.DataFrame()))
     response = Mock()
-    response.json.return_value = {"stats": [{"group": {"displayName": "pitching"}, "splits": [{
-        "season": "2023", "stat": {"inningsPitched": "100.0", "earnedRuns": 30,
-        "strikeOuts": 120, "baseOnBalls": 20, "gamesPlayed": 25, "gamesStarted": 25},
+    response.json.return_value = {"people": [{"id": 10, "stats": [{
+        "group": {"displayName": "pitching"}, "splits": [{"season": "2023", "stat": {
+            "inningsPitched": "100.0", "earnedRuns": 30, "strikeOuts": 120,
+            "baseOnBalls": 20, "gamesPlayed": 25, "gamesStarted": 25,
+        }}],
     }]}]}
     fetch = Mock(return_value=response)
     monkeypatch.setattr(game, "_fetch_with_rate_limit", fetch)
@@ -303,8 +306,9 @@ def test_missing_player_fetches_history_once_for_both_roles(tmp_path, monkeypatc
     )
     assert len(result) == 2
     fetch.assert_called_once()
-    assert "people/10/stats" in fetch.call_args.args[0]
-    assert "gameType=R" in fetch.call_args.args[0]
+    assert "/api/v1/people?" in fetch.call_args.args[0]
+    assert "personIds=10" in fetch.call_args.args[0]
+    assert "yearByYear" in fetch.call_args.args[0]
     assert fetch.call_args.kwargs == {"refresh_cache": True, "allow_network": True}
     pitcher = result[result.Type == "Pitcher"].iloc[0]
     assert pitcher.PD == "d12" and pitcher.RatingSource == "career"

@@ -248,8 +248,12 @@ class Narrator:
         _validate_context(event, before, after)
         fields = self._fields(event, before)
         family = _family(event)
-        template = self._choose_template(family, fields)
-        sentences = [template.text.format(**fields)]
+        if isinstance(event, PlayEvent) and event.oddity_name:
+            explanation = " ".join(event.details)
+            sentences = [f"Oddity - {event.oddity_name}. {explanation}".strip()]
+        else:
+            template = self._choose_template(family, fields)
+            sentences = [template.text.format(**fields)]
         sentences.extend(_runner_sentences(event, before))
         outs_sentence = _outs_sentence(before, after, event)
         if outs_sentence is not None:
@@ -315,6 +319,8 @@ def _family(event: NarratedEvent) -> str:
         return event.event_type
     if isinstance(event, StealEvent):
         return event.event_type
+    if event.oddity_name:
+        return "oddity"
     if not event.resolved:
         return "oddity"
     if event.event_type == "home_run" and event.runs_scored == 4:
@@ -458,7 +464,7 @@ def _scoring_guidance(
     elif isinstance(event, PlayEvent) and event.defense_outcome == "out":
         lines.append(f"Score: OUT (DEF {event.fielded_by})")
     elif isinstance(event, PlayEvent) and not event.resolved:
-        lines.append("Score: Pending Oddities resolution")
+        lines.append("Score: Oddity; at-bat continues")
     outs = [move for move in event.runner_moves if move.out]
     if isinstance(event, PlayEvent) and event.event_type in {
         "double_play",
@@ -526,7 +532,18 @@ def _transition_text(
             if left
             else ""
         )
-        return f"That ends the {half} of the {_ordinal(before.inning)}.{lob} {score}"
+        automatic_runner = ""
+        if after.inning >= 10 and after.bases[1] is not None:
+            name = _player_name(after, after.bases[1])
+            next_half = "top" if after.half == "top" else "bottom"
+            automatic_runner = (
+                f" {name} starts the {next_half} of the "
+                f"{_ordinal(after.inning)} on second as the automatic runner."
+            )
+        return (
+            f"That ends the {half} of the {_ordinal(before.inning)}."
+            f"{lob} {score}{automatic_runner}"
+        )
     return None
 
 

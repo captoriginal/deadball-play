@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import argparse
-from dataclasses import fields
+from dataclasses import fields, replace
 from datetime import datetime
 import json
 import random
@@ -25,6 +25,7 @@ from deadball_core import (
     pinch_hit,
     pinch_run,
     pitching_change,
+    pitcher_may_be_replaced,
     pitching_opportunity,
     resolve_bunt,
     resolve_hit_and_run,
@@ -42,6 +43,7 @@ from .layout import (
     compose_dashboard,
     field_panel,
     lineups_panel,
+    mlb_stats_panel,
     narration_panel,
 )
 from .session import GameSession, HistoryEntry, SessionConfig, SessionError
@@ -259,7 +261,13 @@ class TerminalApp:
             and any(self.session.state.bases)
         ):
             self._pinch_run_flow()
-        elif command == "M" and self._defense_team_state().bullpen:
+        elif (
+            command == "M"
+            and self._defense_team_state().bullpen
+            and pitcher_may_be_replaced(
+                self.session.state, _defense_side(self.session.state)
+            )
+        ):
             self._pitching_change_flow()
         elif command == "D" and self._defense_team_state().bench:
             self._defensive_substitution_flow()
@@ -410,8 +418,12 @@ class TerminalApp:
         assert daring is not None
         offense_decisions = []
         pitching_decisions = []
+        injury_notices = []
 
         def choose_and_resolve(state: GameState, dice: RandomDice) -> ActionResult:
+            injury_result = self._computer_injury_result(state, injury_notices)
+            if injury_result is not None:
+                return injury_result
             pitching_result = self._computer_pitching_result(
                 state, dice, pitching_decisions
             )
@@ -427,6 +439,7 @@ class TerminalApp:
         self.session.perform(choose_and_resolve)
         team_data = _team(self.session.state, side)[1]
         notices = self._pitching_notices(pitching_decisions)
+        notices[:0] = injury_notices
         if offense_decisions:
             decision = offense_decisions[0]
             notices.append(
@@ -439,8 +452,12 @@ class TerminalApp:
 
     def _perform_play_action(self, action: str) -> None:
         pitching_decisions = []
+        injury_notices = []
 
         def resolve_with_manager(state: GameState, dice: RandomDice) -> ActionResult:
+            injury_result = self._computer_injury_result(state, injury_notices)
+            if injury_result is not None:
+                return injury_result
             pitching_result = self._computer_pitching_result(
                 state, dice, pitching_decisions
             )
@@ -450,8 +467,64 @@ class TerminalApp:
 
         self.session.perform(resolve_with_manager)
         notices = self._pitching_notices(pitching_decisions)
+        notices[:0] = injury_notices
         if notices:
             self._notice = " ".join(notices)
+
+    def _computer_injury_result(self, state, notices):
+        injured = {
+            injury.player_id
+            for injury in state.oddity_state.injuries
+            if injury.must_leave
+        }
+        offense_side = _offense_side(state)
+        offense, offense_data = _team(state, offense_side)
+        if self._team_control(offense_side) == "computer" and offense.bench:
+            batter_id = offense.lineup[offense.batting_order_index]
+            if batter_id in injured:
+                replacement = offense.bench[0]
+                notices.append(
+                    f"{offense_data.short_name} replaces injured "
+                    f"{offense_data.player(batter_id).name} with "
+                    f"{offense_data.player(replacement).name}."
+                )
+                return pinch_hit(state, replacement)
+            for base, runner_id in zip(("1B", "2B", "3B"), state.bases):
+                if runner_id in injured:
+                    replacement = offense.bench[0]
+                    notices.append(
+                        f"{offense_data.short_name} replaces injured "
+                        f"{offense_data.player(runner_id).name} with "
+                        f"{offense_data.player(replacement).name}."
+                    )
+                    return pinch_run(state, base, replacement)
+
+        defense_side = _defense_side(state)
+        defense, defense_data = _team(state, defense_side)
+        if self._team_control(defense_side) != "computer":
+            return None
+        if defense.active_pitcher_id in injured and defense.bullpen:
+            replacement = select_replacement_pitcher(state, defense_side)
+            if replacement is not None:
+                notices.append(
+                    f"{defense_data.short_name} replaces injured pitcher "
+                    f"{defense_data.player(defense.active_pitcher_id).name} with "
+                    f"{defense_data.player(replacement).name}."
+                )
+                return pitching_change(state, defense_side, replacement)
+        if defense.bench:
+            for assignment in defense.active_defense:
+                if assignment.position != "P" and assignment.player_id in injured:
+                    replacement = defense.bench[0]
+                    notices.append(
+                        f"{defense_data.short_name} replaces injured "
+                        f"{defense_data.player(assignment.player_id).name} with "
+                        f"{defense_data.player(replacement).name}."
+                    )
+                    return defensive_substitution(
+                        state, defense_side, assignment.position, replacement
+                    )
+        return None
 
     def _computer_pitching_result(self, state, dice, decisions):
         side = _defense_side(state)
@@ -608,13 +681,15 @@ class TerminalApp:
                 offset=view.narration_offset,
             )
             view.narration_offset = min(view.narration_offset, maximum)
-        else:
+        elif view.context_mode == "lineups":
             right = lineups_panel(
                 state,
                 right_width,
                 build_batting_lines(history),
                 build_pitching_lines(history),
             )
+        else:
+            right = mlb_stats_panel(state, right_width)
         return compose_dashboard(
             self._scoreboard_lines(width),
             self._dashboard_outcome_lines(width),
@@ -816,7 +891,7 @@ class TerminalApp:
             )
         else:
             options = _command_options(self.session.state, self.session)
-        options.extend(("", "[Tab] Field / narration / lineups"))
+        options.extend(("", "[Tab] Field / narration / lineups / MLB stats"))
         if view.context_mode == "narration":
             options.extend(("[Up/Down] Scroll", "[PgUp/PgDn] Page"))
         return ["CURRENT OPTIONS", "", *options]
@@ -967,6 +1042,7 @@ def render_dice(entry: HistoryEntry) -> str:
         "target_bonus": "Target bonus",
         "adjusted_bt": "Adjusted BT",
         "adjusted_obt": "Adjusted OBT",
+        "oddity_total": "Oddity 2d10",
     }
     hidden = {
         "pitch_die",
@@ -977,6 +1053,8 @@ def render_dice(entry: HistoryEntry) -> str:
         "action",
         "steal",
         "swing",
+        "oddity_rolls",
+        "oddity_detail_rolls",
     }
     parts = []
     for field in fields(entry.dice):
@@ -987,6 +1065,13 @@ def render_dice(entry: HistoryEntry) -> str:
         parts.append(f"{label}: {value}")
     if hasattr(entry.dice, "signed_pitch_value"):
         parts.insert(2, f"Pitch value: {entry.dice.signed_pitch_value:+d}")
+    if getattr(entry.dice, "oddity_rolls", None) is not None:
+        rolls = entry.dice.oddity_rolls
+        parts.append(f"Oddity dice: {rolls[0]} + {rolls[1]}")
+        parts.extend(
+            f"{label.replace('_', ' ').title()}: {value}"
+            for label, value in entry.dice.oddity_detail_rolls
+        )
     if hasattr(entry.dice, "steal"):
         steal = entry.dice.steal
         parts.insert(0, f"Steal d20: {steal.roll} -> {steal.modified_roll}")
@@ -1063,7 +1148,8 @@ def _command_options(
         ("H", "hit_and_run"),
     ):
         if action in actions:
-            commands.append(f"[{key}] {ACTION_LABELS[action]}")
+            binding = "S/Enter" if action == "swing" else key
+            commands.append(f"[{binding}] {ACTION_LABELS[action]}")
     if any(
         action.startswith("steal") or action == "double_steal"
         for action in actions
@@ -1076,7 +1162,9 @@ def _command_options(
             commands.append("[P] Pinch hit")
             if any(state.bases):
                 commands.append("[R] Pinch run")
-        if defense.bullpen:
+        if defense.bullpen and pitcher_may_be_replaced(
+            state, _defense_side(state)
+        ):
             commands.append("[M] Mound change")
         if defense.bench:
             commands.append("[D] Defensive sub")
@@ -1234,10 +1322,43 @@ def _parser() -> argparse.ArgumentParser:
         metavar="MLB_GAME_ID",
         help="generate through a running Deadball Web server and start the game",
     )
+    source.add_argument(
+        "--generate-only",
+        metavar="MLB_GAME_ID",
+        help="generate JSON and PDF through Deadball Web without starting a game",
+    )
     parser.add_argument(
         "--web-base-url",
         default="http://127.0.0.1:8000/api",
-        help="Deadball Web API used by --generate-game",
+        help="Deadball Web API used by generation commands",
+    )
+    parser.add_argument(
+        "--trait-mode",
+        choices=("standard", "sabr", "adaptive"),
+        default="standard",
+        help="Deadball Web trait calculation mode",
+    )
+    parser.add_argument(
+        "--force-generate",
+        action="store_true",
+        help="refresh cached statistics before generating",
+    )
+    parser.add_argument(
+        "--scorecard-side",
+        choices=("both", "home", "away"),
+        default="both",
+        help="team side(s) used for generated PDF score sheets (default: both)",
+    )
+    parser.add_argument(
+        "--return-to-menu",
+        action="store_true",
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--away-team-label", default="Away team", help=argparse.SUPPRESS
+    )
+    parser.add_argument(
+        "--home-team-label", default="Home team", help=argparse.SUPPRESS
     )
     parser.add_argument(
         "--database",
@@ -1260,6 +1381,18 @@ def _parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--away-daring", type=int)
     parser.add_argument("--home-daring", type=int)
+    parser.add_argument(
+        "--oddities",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="enable or disable the Second Edition Oddities table for a new game",
+    )
+    parser.add_argument(
+        "--three-batter-minimum",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="enable or disable MLB-style minimum pitcher usage for a new game",
+    )
     parser.add_argument(
         "--line-mode",
         action="store_true",
@@ -1288,10 +1421,46 @@ def main(argv: list[str] | None = None) -> int:
     parser = _parser()
     args = parser.parse_args(arguments)
     if not any(
-        (args.game, args.resume, args.demo, args.cached_game, args.generate_game)
+        (
+            args.game,
+            args.resume,
+            args.demo,
+            args.cached_game,
+            args.generate_game,
+            args.generate_only,
+        )
     ):
         parser.error("choose a game source or run without arguments for the start screen")
+
+    def return_to_start_screen(message: str | None = None) -> int:
+        if message:
+            print(f"\nCould not continue: {message}")
+        input("\nPress Enter to return to the main menu.")
+        from .startup import startup_arguments
+
+        selected = startup_arguments()
+        return 0 if selected is None else main(selected)
+
     try:
+        if args.generate_only:
+            from .startup import generate_web_artifacts
+
+            artifacts = generate_web_artifacts(
+                args.generate_only,
+                base_url=args.web_base_url,
+                trait_mode=args.trait_mode,
+                force=args.force_generate,
+                scorecard_side=args.scorecard_side,
+                progress_func=print,
+                away_team_label=args.away_team_label,
+                home_team_label=args.home_team_label,
+            )
+            print(f"Game JSON: {artifacts.game_path}")
+            for scorecard_path in artifacts.scorecard_paths:
+                print(f"Score sheet: {scorecard_path}")
+            if args.return_to_menu:
+                return return_to_start_screen()
+            return 0
         session = None
         if args.resume:
             session = GameSession.load(args.resume)
@@ -1306,6 +1475,12 @@ def main(argv: list[str] | None = None) -> int:
                 artifacts = generate_web_artifacts(
                     args.generate_game,
                     base_url=args.web_base_url,
+                    trait_mode=args.trait_mode,
+                    force=args.force_generate,
+                    scorecard_side=args.scorecard_side,
+                    progress_func=print,
+                    away_team_label=args.away_team_label,
+                    home_team_label=args.home_team_label,
                 )
                 game = load_generated_game(
                     artifacts.game_path.read_text(encoding="utf-8")
@@ -1313,7 +1488,8 @@ def main(argv: list[str] | None = None) -> int:
                 if args.save is None:
                     args.save = artifacts.save_path
                 print(f"Game JSON: {artifacts.game_path}")
-                print(f"Score sheet: {artifacts.scorecard_path}")
+                for scorecard_path in artifacts.scorecard_paths:
+                    print(f"Score sheet: {scorecard_path}")
             else:
                 try:
                     game_text = args.game.read_text(encoding="utf-8")
@@ -1328,6 +1504,26 @@ def main(argv: list[str] | None = None) -> int:
                 else:
                     game = load_generated_game(document)
             if session is None:
+                if (
+                    args.oddities is not None
+                    or args.three_batter_minimum is not None
+                ):
+                    game = replace(
+                        game,
+                        rules=replace(
+                            game.rules,
+                            oddities=(
+                                game.rules.oddities
+                                if args.oddities is None
+                                else args.oddities
+                            ),
+                            three_batter_minimum=(
+                                game.rules.three_batter_minimum
+                                if args.three_batter_minimum is None
+                                else args.three_batter_minimum
+                            ),
+                        ),
+                    )
                 if args.export_game:
                     args.export_game.parent.mkdir(parents=True, exist_ok=True)
                     args.export_game.write_text(
@@ -1353,6 +1549,8 @@ def main(argv: list[str] | None = None) -> int:
                 if args.save:
                     session.save()
     except (json.JSONDecodeError, OSError, ValueError) as exc:
+        if args.return_to_menu:
+            return return_to_start_screen(str(exc))
         parser.error(str(exc))
     use_fullscreen = (
         sys.stdin.isatty()

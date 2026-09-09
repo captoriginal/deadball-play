@@ -771,6 +771,35 @@ def build_deadball_for_game(
         available_hitters = mlb_roster_ids(team_entry, *hitter_groups)
         available_pitchers = mlb_roster_ids(team_entry, *pitcher_groups)
 
+        # A late call-up or newly traded player may be absent from the cached
+        # team-season ratings. Resolve all such roster gaps in one request
+        # rather than discovering and fetching them one at a time below.
+        missing_history_ids = set()
+        for player in players:
+            person = player.get("person") or {}
+            pid = _player_id(person.get("id"))
+            if pid is None:
+                continue
+            name_key = f"name:{normalize_player_name(person.get('fullName', ''))}"
+            if pid in available_hitters and not (
+                hitter_lookup.get(f"id:{pid}") is not None or hitter_lookup.get(name_key) is not None
+            ):
+                missing_history_ids.add(int(pid))
+            if pid in available_pitchers and not (
+                pitcher_lookup.get(f"id:{pid}") is not None or pitcher_lookup.get(name_key) is not None
+            ):
+                missing_history_ids.add(int(pid))
+        if missing_history_ids:
+            batched_histories = career.load_histories(
+                sorted(missing_history_ids), season, team_stats.CACHE_ROOT / "career",
+                allow_network=allow_network, refresh=refresh,
+                fetch=lambda url: _fetch_with_rate_limit(
+                    url, rate_limit_seconds, "MLB career statistics",
+                    refresh_cache=True, allow_network=allow_network,
+                ),
+            )
+            history_cache.update({str(player_id): history for player_id, history in batched_histories.items()})
+
         hitters: list[tuple[float, str, dict, dict]] = []
         for player in players:
             bat_stats = player.get("stats", {}).get("batting") or {}
@@ -836,6 +865,7 @@ def build_deadball_for_game(
                 "2B": source.get("2B"),
                 "SB": source.get("SB"),
                 "G": source.get("G"),
+                "GameAppeared": bool(bat_stats) or bool(bat_order),
                 "Traits": source.get("Traits", ""),
                 **{key: source.get(key) for key in RATING_METADATA},
             }
@@ -887,6 +917,7 @@ def build_deadball_for_game(
                 "GB%": source.get("GB%"),
                 "GS": source.get("GS"),
                 "GameStarted": bool(pit_stats.get("gamesStarted")),
+                "GameAppeared": bool(pit_stats),
                 "Traits": source.get("Traits", ""),
                 **batting,
                 **{key: source.get(key) for key in RATING_METADATA},

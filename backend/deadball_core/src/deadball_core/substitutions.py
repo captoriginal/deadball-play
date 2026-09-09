@@ -130,6 +130,12 @@ def pitching_change(state: GameState, side: str, replacement_id: str) -> ActionR
     """Install an available pitcher, resetting persistent pitcher state."""
     _ensure_game_active(state)
     team, data = _team_and_data(state, side)
+    if not pitcher_may_be_replaced(state, side):
+        faced = team.pitcher_state.batters_faced_since_entry if team.pitcher_state else 0
+        raise SubstitutionError(
+            "three-batter minimum: the active pitcher must face "
+            f"{3 - faced} more batter{'s' if 3 - faced != 1 else ''} or finish the half-inning"
+        )
     replacement = _available_pitcher(team, data, replacement_id)
     outgoing_id = team.active_pitcher_id
     lineup = team.lineup
@@ -191,6 +197,21 @@ def pitching_change(state: GameState, side: str, replacement_id: str) -> ActionR
     )
 
 
+def pitcher_may_be_replaced(state: GameState, side: str) -> bool:
+    """Return whether the optional MLB-style minimum permits a pitching change."""
+    team, _ = _team_and_data(state, side)
+    if not state.source.rules.three_batter_minimum or team.active_pitcher_id is None:
+        return True
+    progress = team.pitcher_state
+    if progress is None:
+        return True
+    return (
+        progress.batters_faced_since_entry >= 3
+        or progress.inning_end_removal_window
+        or progress.removal_exception in {"injury", "illness"}
+    )
+
+
 def switch_defensive_positions(
     state: GameState, side: str, first_position: str, second_position: str
 ) -> ActionResult:
@@ -237,6 +258,14 @@ def effective_defensive_traits(state: GameState, position: str) -> tuple[str, ..
     side = _defense_side(state)
     team, data = _team_and_data(state, side)
     player = data.player(_assignment(team, position.upper()).player_id)
+    if any(
+        injury.player_id == player.player_id and injury.traits_nullified
+        for injury in state.oddity_state.injuries
+    ):
+        return ("D-",) if player.player_id in state.oddity_state.poor_defenders else ()
+    if player.player_id in state.oddity_state.poor_defenders:
+        traits = tuple(trait for trait in player.traits if trait != "D+")
+        return traits if "D-" in traits else (*traits, "D-")
     if _plays_position_without_penalty(player, position.upper()):
         return player.traits
     traits = tuple(trait for trait in player.traits if trait != "D+")

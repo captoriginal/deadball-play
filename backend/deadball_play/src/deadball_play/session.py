@@ -17,9 +17,12 @@ from deadball_core import (
     GameResult,
     GameState,
     HitAndRunDiceRecord,
+    InjuryRecord,
     InitialTeamState,
     ManagerState,
+    OddityState,
     PitchDieAdjustment,
+    PitcherOddityModifier,
     PitcherState,
     PlayEvent,
     RandomDice,
@@ -298,6 +301,7 @@ def _decode_event(raw: object) -> HistoryEvent:
             RunnerMove(**_mapping(item, "runner move"))
             for item in _list(data.get("runner_moves", []), "runner_moves")
         )
+        data["details"] = tuple(_list(data.get("details", []), "details"))
         return PlayEvent(**data)
     if kind == "StealEvent":
         data["runner_moves"] = tuple(
@@ -314,6 +318,16 @@ def _decode_event(raw: object) -> HistoryEvent:
 def _decode_dice(raw: object) -> HistoryDice:
     kind, data = _typed(raw, "dice")
     if kind == "DiceRecord":
+        rolls = data.get("oddity_rolls")
+        if rolls is not None:
+            parsed = tuple(_list(rolls, "oddity rolls"))
+            if len(parsed) != 2:
+                raise SessionLoadError("oddity rolls must contain two values")
+            data["oddity_rolls"] = parsed
+        data["oddity_detail_rolls"] = tuple(
+            tuple(_list(item, "oddity detail roll"))
+            for item in _list(data.get("oddity_detail_rolls", []), "oddity detail rolls")
+        )
         return DiceRecord(**data)
     if kind == "StealDiceRecord":
         return StealDiceRecord(**data)
@@ -321,7 +335,17 @@ def _decode_dice(raw: object) -> HistoryDice:
         return BuntDiceRecord(**data)
     if kind == "HitAndRunDiceRecord":
         data["steal"] = StealDiceRecord(**_mapping(data.get("steal"), "steal dice"))
-        data["swing"] = DiceRecord(**_mapping(data.get("swing"), "swing dice"))
+        swing = dict(_mapping(data.get("swing"), "swing dice"))
+        oddity_rolls = swing.get("oddity_rolls")
+        if oddity_rolls is not None:
+            swing["oddity_rolls"] = tuple(_list(oddity_rolls, "oddity rolls"))
+        swing["oddity_detail_rolls"] = tuple(
+            tuple(_list(item, "oddity detail roll"))
+            for item in _list(
+                swing.get("oddity_detail_rolls", []), "oddity detail rolls"
+            )
+        )
+        data["swing"] = DiceRecord(**swing)
         return HitAndRunDiceRecord(**data)
     raise SessionLoadError(f"unknown dice kind {kind!r}")
 
@@ -345,6 +369,7 @@ def _encode_state(state: GameState) -> dict[str, Any]:
         "away": _encode_team(state.away),
         "home": _encode_team(state.home),
         "result": None if state.result is None else asdict(state.result),
+        "oddity_state": asdict(state.oddity_state),
     }
 
 
@@ -357,6 +382,35 @@ def _decode_state(raw: object, game) -> GameState:
         raise SessionLoadError("bases must contain three player IDs or null values")
     result_raw = item.get("result")
     result = None if result_raw is None else GameResult(**_mapping(result_raw, "result"))
+    oddity_raw = _mapping(item.get("oddity_state", {}), "oddity state")
+    oddity_state = OddityState(
+        last_out_fielder_id=_optional_text(
+            oddity_raw.get("last_out_fielder_id"), "last out fielder"
+        ),
+        poor_defenders=_text_tuple(oddity_raw.get("poor_defenders", []), "poor defenders"),
+        home_batting_penalty_inning=(
+            None
+            if oddity_raw.get("home_batting_penalty_inning") is None
+            else _positive_integer(
+                oddity_raw.get("home_batting_penalty_inning"),
+                "home batting penalty inning",
+            )
+        ),
+        steal_bonus_batter_id=_optional_text(
+            oddity_raw.get("steal_bonus_batter_id"), "steal bonus batter"
+        ),
+        catcher_steal_bonus_team_id=_optional_text(
+            oddity_raw.get("catcher_steal_bonus_team_id"), "catcher steal bonus team"
+        ),
+        pitcher_modifiers=tuple(
+            PitcherOddityModifier(**_mapping(value, "pitcher oddity modifier"))
+            for value in _list(oddity_raw.get("pitcher_modifiers", []), "pitcher modifiers")
+        ),
+        injuries=tuple(
+            InjuryRecord(**_mapping(value, "injury record"))
+            for value in _list(oddity_raw.get("injuries", []), "injuries")
+        ),
+    )
     state = GameState(
         source=game,
         inning=_positive_integer(item.get("inning"), "inning"),
@@ -368,6 +422,7 @@ def _decode_state(raw: object, game) -> GameState:
         away=_decode_team(item.get("away")),
         home=_decode_team(item.get("home")),
         result=result,
+        oddity_state=oddity_state,
     )
     _validate_state(state)
     return state
@@ -436,6 +491,22 @@ def _validate_state(state: GameState) -> None:
         raise SessionLoadError("away team identity does not match generated game")
     if state.home.team_id != state.source.teams.home.team_id:
         raise SessionLoadError("home team identity does not match generated game")
+    roster_ids = {
+        player.player_id
+        for team in (state.source.teams.away, state.source.teams.home)
+        for player in team.roster
+    }
+    oddity_player_ids = {
+        *state.oddity_state.poor_defenders,
+        *(injury.player_id for injury in state.oddity_state.injuries),
+        *(modifier.player_id for modifier in state.oddity_state.pitcher_modifiers),
+    }
+    if not oddity_player_ids <= roster_ids:
+        raise SessionLoadError("Oddities state references an unknown player")
+    if len(state.oddity_state.injuries) != len(
+        {injury.player_id for injury in state.oddity_state.injuries}
+    ):
+        raise SessionLoadError("Oddities state contains duplicate injury records")
     try:
         validate_team_state(state, "away")
         validate_team_state(state, "home")
@@ -456,6 +527,7 @@ def _validate_state(state: GameState) -> None:
                 team.pitcher_state.completed_innings,
                 team.pitcher_state.current_inning_runs,
                 team.pitcher_state.current_inning_batters_faced,
+                team.pitcher_state.batters_faced_since_entry,
                 team.pitcher_state.current_inning_strikeouts,
                 team.pitcher_state.consecutive_scoreless_innings,
                 team.pitcher_state.runs_since_jam,

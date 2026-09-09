@@ -248,6 +248,48 @@ def test_load_history_success_uses_regular_mlb_history_query_and_caches(tmp_path
     fetch.assert_not_called()
 
 
+def test_load_histories_batches_ids_and_preserves_individual_caches(tmp_path, payload):
+    def response(url):
+        ids = [int(value) for value in parse_qs(urlparse(url).query)["personIds"][0].split(",")]
+        return response_for({"people": [
+            {"id": player_id, "stats": deepcopy(payload["stats"])} for player_id in ids
+        ]})
+
+    fetch = Mock(side_effect=response)
+    result = career.load_histories(
+        [101, 102, 102, 103], 2024, tmp_path,
+        allow_network=True, fetch=fetch, batch_size=2,
+    )
+
+    assert set(result) == {101, 102, 103}
+    assert fetch.call_count == 2
+    first = parse_qs(urlparse(fetch.call_args_list[0].args[0]).query)
+    assert first["personIds"] == ["101,102"]
+    assert first["hydrate"] == ["stats(group=[hitting,pitching,fielding],type=[yearByYear],sportIds=[1])"]
+    for player_id in result:
+        assert (tmp_path / f"mlb-{player_id}-2024-v{career.CACHE_VERSION}.json").exists()
+
+    fetch.reset_mock()
+    assert career.load_histories([101, 102, 103], 2024, tmp_path, allow_network=True, fetch=fetch) == result
+    fetch.assert_not_called()
+
+
+def test_load_histories_falls_back_only_for_player_missing_from_batch(tmp_path, payload):
+    def response(url):
+        parsed = urlparse(url)
+        if parsed.path == "/api/v1/people":
+            return response_for({"people": [{"id": 101, "stats": deepcopy(payload["stats"])}]})
+        assert parsed.path == "/api/v1/people/102/stats"
+        return response_for(payload)
+
+    fetch = Mock(side_effect=response)
+    result = career.load_histories([101, 102], 2024, tmp_path, allow_network=True, fetch=fetch)
+
+    assert all(result.values())
+    assert fetch.call_count == 2
+    assert urlparse(fetch.call_args_list[1].args[0]).path == "/api/v1/people/102/stats"
+
+
 def test_default_request_has_timeout(monkeypatch, tmp_path, payload):
     fetch = Mock(return_value=response_for(payload))
     monkeypatch.setattr(career.requests, "get", fetch)

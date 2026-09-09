@@ -91,6 +91,21 @@ Conceptual example:
 }
 ```
 
+The optional-rules object currently includes:
+
+```json
+{
+  "edition": "second",
+  "era": "modern",
+  "designated_hitter": true,
+  "oddities": true,
+  "three_batter_minimum": true
+}
+```
+
+Both `oddities` and `three_batter_minimum` default to `true` when absent.
+Explicit values in existing schema-v1 game files and saves remain authoritative.
+
 ---
 
 ## Game Metadata
@@ -120,9 +135,15 @@ Example:
   "game_date": "2026-08-15",
   "source": "deadball-web",
   "source_game_id": "123456",
-  "season": 2026
+  "season": 2026,
+  "game_type": "R"
 }
 ```
+
+`game_type` uses MLB's schedule code. `R` enables the regular-season automatic
+runner in extra innings. Explicit postseason (`F`, `D`, `L`, `W`, or `C`),
+spring (`S`), and exhibition (`E`) games begin extra innings with empty bases.
+Legacy game files without this field are treated as regular season.
 
 ---
 
@@ -240,6 +261,18 @@ UT
 ```
 
 If the generator supports multiple natural positions, retain them separately from the active starting position.
+
+### MLB Display Statistics
+
+Players may carry an optional `mlb_stats` object used only for presentation.
+The current generator preserves G, AVG, OBP, HR, 2B, and SB for hitters, and
+GS, IP, ERA, K/9, BB/9, and GB% for pitchers. Canonical keys use descriptive
+snake case, for example `on_base_percentage`, `innings_pitched`, and
+`strikeouts_per_nine`.
+
+`appeared_in_source_game` records whether the player participated in the MLB
+game used to construct the roster. Deadball Play uses this provenance flag to
+asterisk source-game bench substitutions; it has no mechanical effect.
 
 ---
 

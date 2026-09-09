@@ -45,7 +45,24 @@ class RulesConfig:
     edition: str
     era: str
     designated_hitter: bool
-    oddities: bool = False
+    oddities: bool = True
+    three_batter_minimum: bool = True
+
+
+@dataclass(frozen=True)
+class MlbPlayerStats:
+    games: float | None = None
+    average: float | None = None
+    on_base_percentage: float | None = None
+    home_runs: float | None = None
+    doubles: float | None = None
+    stolen_bases: float | None = None
+    games_started: float | None = None
+    innings_pitched: float | None = None
+    era: float | None = None
+    strikeouts_per_nine: float | None = None
+    walks_per_nine: float | None = None
+    ground_ball_percentage: float | None = None
 
 
 @dataclass(frozen=True)
@@ -61,6 +78,8 @@ class PlayerData:
     obt: int | None = None
     pitch_die: str | None = None
     traits: tuple[str, ...] = ()
+    mlb_stats: MlbPlayerStats | None = None
+    appeared_in_source_game: bool = False
 
 
 @dataclass(frozen=True)
@@ -119,6 +138,7 @@ class GeneratorGameContext:
     away_starting_pitcher_id: str | int | None = None
     home_starting_pitcher_id: str | int | None = None
     designated_hitter: bool = True
+    game_type: str | None = None
 
 
 def load_generated_game(payload: str | bytes | Mapping[str, Any]) -> GeneratedGame:
@@ -152,7 +172,11 @@ def load_generated_game(payload: str | bytes | Mapping[str, Any]) -> GeneratedGa
         edition=_text(rules_raw.get("edition"), "rules.edition").lower(),
         era=_text(rules_raw.get("era"), "rules.era").lower(),
         designated_hitter=_boolean(rules_raw.get("designated_hitter"), "rules.designated_hitter"),
-        oddities=_boolean(rules_raw.get("oddities", False), "rules.oddities"),
+        oddities=_boolean(rules_raw.get("oddities", True), "rules.oddities"),
+        three_batter_minimum=_boolean(
+            rules_raw.get("three_batter_minimum", True),
+            "rules.three_batter_minimum",
+        ),
     )
     result = GeneratedGame(
         schema_version=version,
@@ -274,12 +298,14 @@ def adapt_generator_game(
             "source": "deadball-generator",
             "source_game_id": context.game_id,
             "season": year,
+            "game_type": context.game_type,
         },
         "rules": {
             "edition": "second",
             "era": "modern",
             "designated_hitter": context.designated_hitter,
-            "oddities": False,
+            "oddities": True,
+            "three_batter_minimum": True,
         },
         "teams": {
             "away": _adapt_team_rows(
@@ -304,6 +330,7 @@ def build_generator_game(
     home_team: str,
     away_short: str | None = None,
     home_short: str | None = None,
+    game_type: str | None = None,
 ) -> GeneratedGame:
     """Build schema v1 using identity metadata plus a flat generator result."""
     if isinstance(stats, (str, bytes)):
@@ -343,6 +370,7 @@ def build_generator_game(
             home_team_name=home_team,
             home_team_short=home_abbr,
             designated_hitter=designated_hitter,
+            game_type=game_type,
         ),
     )
 
@@ -401,6 +429,46 @@ def _parse_player(value: Any, path: str) -> PlayerData:
         obt=obt,
         pitch_die=pitch_die,
         traits=traits,
+        mlb_stats=_parse_mlb_stats(raw.get("mlb_stats"), f"{path}.mlb_stats"),
+        appeared_in_source_game=_boolean(
+            raw.get("appeared_in_source_game", False),
+            f"{path}.appeared_in_source_game",
+        ),
+    )
+
+
+def _parse_mlb_stats(value: Any, path: str) -> MlbPlayerStats | None:
+    if value is None:
+        return None
+    raw = _mapping(value, path)
+    return MlbPlayerStats(
+        games=_optional_number(raw.get("games"), f"{path}.games"),
+        average=_optional_number(raw.get("average"), f"{path}.average"),
+        on_base_percentage=_optional_number(
+            raw.get("on_base_percentage"), f"{path}.on_base_percentage"
+        ),
+        home_runs=_optional_number(raw.get("home_runs"), f"{path}.home_runs"),
+        doubles=_optional_number(raw.get("doubles"), f"{path}.doubles"),
+        stolen_bases=_optional_number(
+            raw.get("stolen_bases"), f"{path}.stolen_bases"
+        ),
+        games_started=_optional_number(
+            raw.get("games_started"), f"{path}.games_started"
+        ),
+        innings_pitched=_optional_number(
+            raw.get("innings_pitched"), f"{path}.innings_pitched"
+        ),
+        era=_optional_number(raw.get("era"), f"{path}.era"),
+        strikeouts_per_nine=_optional_number(
+            raw.get("strikeouts_per_nine"), f"{path}.strikeouts_per_nine"
+        ),
+        walks_per_nine=_optional_number(
+            raw.get("walks_per_nine"), f"{path}.walks_per_nine"
+        ),
+        ground_ball_percentage=_optional_number(
+            raw.get("ground_ball_percentage"),
+            f"{path}.ground_ball_percentage",
+        ),
     )
 
 
@@ -452,6 +520,8 @@ def _adapt_team_rows(
             "role": "position_player",
             "positions": [],
             "traits": [],
+            "mlb_stats": {},
+            "appeared_in_source_game": False,
         })
         positions = _legacy_positions(row.get("Positions") or row.get("Pos"))
         entry["positions"] = list(dict.fromkeys([*entry["positions"], *positions]))
@@ -473,12 +543,20 @@ def _adapt_team_rows(
             entry["pitch_die"] = _optional_text(row.get("PD"))
             if "P" not in entry["positions"]:
                 entry["positions"].append("P")
+            entry["mlb_stats"].update(_legacy_mlb_stats(row, pitching=True))
+            entry["appeared_in_source_game"] = bool(
+                entry["appeared_in_source_game"] or _truthy(row.get("GameAppeared"))
+            )
         elif row_type == "hitter":
             entry["bats"] = _optional_upper(row.get("Hand") or row.get("LR"))
             entry["throws"] = entry.get("throws") or _optional_upper(row.get("Throws"))
             entry["bt"] = _legacy_target(row.get("BT"))
             entry["obt"] = _legacy_target(row.get("OBT"))
             order = _batting_order(row.get("BatOrder"))
+            entry["mlb_stats"].update(_legacy_mlb_stats(row, pitching=False))
+            entry["appeared_in_source_game"] = bool(
+                entry["appeared_in_source_game"] or order is not None
+            )
             if order is not None and order.is_integer():
                 slot = int(order)
                 if slot in lineup:
@@ -500,6 +578,33 @@ def _adapt_team_rows(
         "lineup": [lineup[key] for key in sorted(lineup)],
         "roster": list(players.values()),
         "starting_pitcher_id": starter_id,
+    }
+
+
+def _legacy_mlb_stats(row: Mapping[str, Any], *, pitching: bool) -> dict[str, float]:
+    fields = (
+        {
+            "games_started": "GS",
+            "innings_pitched": "IP",
+            "era": "ERA",
+            "strikeouts_per_nine": "K/9",
+            "walks_per_nine": "BB/9",
+            "ground_ball_percentage": "GB%",
+        }
+        if pitching
+        else {
+            "games": "G",
+            "average": "AVG",
+            "on_base_percentage": "OBP",
+            "home_runs": "HR",
+            "doubles": "2B",
+            "stolen_bases": "SB",
+        }
+    )
+    return {
+        name: number
+        for name, legacy_name in fields.items()
+        if (number := _optional_number(row.get(legacy_name), legacy_name)) is not None
     }
 
 
@@ -538,6 +643,20 @@ def _integer(value: Any, path: str) -> int:
 
 def _optional_integer(value: Any, path: str) -> int | None:
     return None if value is None else _integer(value, path)
+
+
+def _optional_number(value: Any, path: str) -> float | None:
+    if value is None or value == "":
+        return None
+    if isinstance(value, bool):
+        raise GameDataError(f"{path} must be numeric")
+    try:
+        result = float(value)
+    except (TypeError, ValueError) as exc:
+        raise GameDataError(f"{path} must be numeric") from exc
+    if not math.isfinite(result):
+        raise GameDataError(f"{path} must be finite")
+    return result
 
 
 def _boolean(value: Any, path: str) -> bool:

@@ -52,12 +52,14 @@ def load_demo_game() -> GeneratedGame:
                 "game_date": "2026-01-01",
                 "source": "deadball-play-demo",
                 "season": 2026,
+                "game_type": "R",
             },
             "rules": {
                 "edition": "second",
                 "era": "modern",
                 "designated_hitter": True,
-                "oddities": False,
+                "oddities": True,
+                "three_batter_minimum": True,
             },
             "teams": {
                 "away": _team("road", "Roadrunners", "RD", 29, 37, "d8"),

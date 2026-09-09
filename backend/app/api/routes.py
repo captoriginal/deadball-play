@@ -210,6 +210,7 @@ def _serialize_game(game: models.Game) -> Game:
         id=game.id,
         game_id=game.game_id,
         game_date=game.game_date,
+        game_type=game.game_type,
         home_team=game.home_team,
         home_team_short=game.home_team_short,
         away_team=game.away_team,
@@ -243,13 +244,22 @@ def _extract_team_labels(team_payload: dict | None) -> tuple[str | None, str | N
     return label, short
 
 
-def _get_or_create_game(session: Session, game_id: str, game_date: datetime, home: str | None, away: str | None, desc: str | None):
+def _get_or_create_game(
+    session: Session,
+    game_id: str,
+    game_date: datetime,
+    home: str | None,
+    away: str | None,
+    desc: str | None,
+    game_type: str | None = None,
+):
     game = session.exec(select(models.Game).where(models.Game.game_id == game_id)).first()
     if game:
         return game
     game = models.Game(
         game_id=game_id,
         game_date=game_date,
+        game_type=game_type,
         home_team=home,
         away_team=away,
         description=desc,
@@ -281,12 +291,18 @@ def list_games(
     use_cache = False
     if games and not force:
         fresh = all(not _is_stale(g.updated_at, cache_ttl_hours) for g in games)
-        missing_labels = any(
-            (not g.home_team or not g.away_team or not g.home_team_short or not g.away_team_short)
+        missing_metadata = any(
+            (
+                not g.home_team
+                or not g.away_team
+                or not g.home_team_short
+                or not g.away_team_short
+                or not g.game_type
+            )
             for g in games
         )
-        # If any cached game is missing team names/short names and we can reach the network, treat cache as stale.
-        if fresh and not missing_labels:
+        # Refresh old cache rows that predate team labels or MLB game type.
+        if fresh and not missing_metadata:
             use_cache = True
 
     if not use_cache and settings.allow_generator_network:
@@ -309,6 +325,7 @@ def list_games(
                         game = models.Game(
                             game_id=str(game_pk),
                             game_date=parsed_date,
+                            game_type=g.get("gameType"),
                             home_team=home_label,
                             home_team_short=home_short,
                             away_team=away_label,
@@ -318,6 +335,7 @@ def list_games(
                         session.add(game)
                     else:
                         game.game_date = parsed_date
+                        game.game_type = g.get("gameType")
                         game.home_team = home_label
                         game.home_team_short = home_short
                         game.away_team = away_label
@@ -551,6 +569,7 @@ def get_play_game(
     arguments = {
         "game_id": game.game_id,
         "game_date": str(game.game_date),
+        "game_type": game.game_type,
         "away_team": game.away_team,
         "home_team": game.home_team,
         "away_short": game.away_team_short,

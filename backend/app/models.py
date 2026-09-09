@@ -39,6 +39,10 @@ class Game(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     game_id: str = Field(index=True, nullable=False)
     game_date: date = Field(nullable=False)
+    game_type: Optional[str] = Field(
+        default=None,
+        description="MLB game type code",
+    )
     home_team: Optional[str] = None
     home_team_short: Optional[str] = Field(default=None, description="MLB shortName (e.g., Dodgers)")
     away_team: Optional[str] = None

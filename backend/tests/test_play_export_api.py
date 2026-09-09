@@ -87,6 +87,7 @@ def test_cached_web_game_exports_canonical_play_contract():
         game = models.Game(
             game_id="123",
             game_date=date(2026, 8, 15),
+            game_type="D",
             away_team="Visitors",
             away_team_short="Visitors",
             home_team="Hosts",
@@ -118,6 +119,7 @@ def test_cached_web_game_exports_canonical_play_contract():
     payload = response.json()
     assert payload["schema_version"] == 1
     assert payload["game"]["game_id"] == "mlb-123"
+    assert payload["game"]["game_type"] == "D"
     assert payload["teams"]["away"]["short_name"] == "VIS"
     assert payload["teams"]["home"]["short_name"] == "HST"
     assert len(payload["teams"]["away"]["lineup"]) == 9

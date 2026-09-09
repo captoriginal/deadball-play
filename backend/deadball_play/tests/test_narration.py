@@ -70,6 +70,16 @@ def play(event_type, **changes):
         (play("sacrifice_bunt", classification="bunt", scoring_notation="SAC", outs_added=1), "sacrifice_bunt"),
         (play("hit_and_run_hit", classification="hit_and_run", scoring_notation="1B"), "hit_and_run_hit"),
         (play("hit_and_run_out", classification="hit_and_run", scoring_notation="G", outs_added=1), "hit_and_run_out"),
+        (
+            play(
+                "oddity_rain_delay",
+                classification="oddity",
+                resolved=False,
+                oddity_name="Rain Delay",
+                details=("Rain delays the game for 100 minutes; the at-bat continues.",),
+            ),
+            "oddity",
+        ),
         (StealEvent("stolen_base", "steal_second", True, (RunnerMove("away-h2", "1B", "2B"),), scoring_notation="SB"), "stolen_base"),
         (StealEvent("caught_stealing", "steal_second", True, (RunnerMove("away-h2", "1B", out=True),), outs_added=1, scoring_notation="CS"), "caught_stealing"),
         (StealEvent("double_steal", "double_steal", True, (RunnerMove("away-h2", "2B", "3B"), RunnerMove("away-h3", "1B", "2B")), scoring_notation="SB"), "double_steal"),
@@ -232,6 +242,38 @@ def test_half_inning_transition_reports_runners_left_on_base():
 
     assert "That is the third out." in rendered.play_text
     assert "VIS leaves 1 runner on base." in rendered.transition_text
+
+
+def test_extra_inning_transition_names_automatic_runner():
+    before = replace(
+        initial_state(),
+        inning=9,
+        half="bottom",
+        outs=2,
+        away_score=2,
+        home_score=2,
+    )
+    after = replace(
+        before,
+        inning=10,
+        half="top",
+        outs=0,
+        bases=(None, "away-h9", None),
+    )
+    event = play(
+        "strikeout",
+        batter_id="home-h1",
+        pitcher_id="away-sp",
+        scoring_notation="K",
+        outs_added=1,
+    )
+
+    rendered = Narrator(random.Random(4)).render(event, before, after)
+
+    assert (
+        "Visitors Hitter 9 starts the top of the 10th on second as the "
+        "automatic runner."
+    ) in rendered.transition_text
 
 
 def test_run_scoring_context_only_describes_verified_tie_or_lead():

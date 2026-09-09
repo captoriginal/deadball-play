@@ -998,16 +998,16 @@ def _histories(batting, pitching, season, *, allow_network, refresh, rate_limit_
     for frame in frames:
         if "IDfg" in frame:
             frame["IDmlb"] = frame["IDmlb"].combine_first(frame["IDfg"].map(ids))
-    histories = {}
+    player_ids = []
     for frame in frames:
         for pid in frame["IDmlb"].dropna().unique():
-            if rules.number(pid) is None or int(pid) in histories:
+            if rules.number(pid) is None or int(pid) in player_ids:
                 continue
-            histories[int(pid)] = career.load_history(
-                pid, season, CACHE_ROOT / "career", allow_network=allow_network, refresh=refresh,
-                fetch=lambda url: _fetch_with_rate_limit(url, rate_limit_seconds, "MLB career statistics"),
-            )
-    return histories
+            player_ids.append(int(pid))
+    return career.load_histories(
+        player_ids, season, CACHE_ROOT / "career", allow_network=allow_network, refresh=refresh,
+        fetch=lambda url: _fetch_with_rate_limit(url, rate_limit_seconds, "MLB career statistics"),
+    )
 
 
 def _extract_table_html(soup: BeautifulSoup, keywords: list[str]) -> str:

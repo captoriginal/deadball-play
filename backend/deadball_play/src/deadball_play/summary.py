@@ -57,24 +57,27 @@ def build_batting_lines(
     totals: dict[str, BattingLine] = {}
     for entry in history:
         event = entry.event
-        if isinstance(event, PlayEvent):
+        if isinstance(event, PlayEvent) and event.resolved:
             previous = totals.get(event.batter_id, BattingLine())
             walk = event.event_type == "walk" or event.classification == "walk"
             sacrifice = event.event_type == "sacrifice_bunt"
+            no_at_bat = event.scoring_notation in {"HBP", "CI"}
             hit = (
                 event.hit_type is not None
                 and event.defense_outcome not in {"out", "error"}
             )
             totals[event.batter_id] = BattingLine(
                 plate_appearances=previous.plate_appearances + 1,
-                at_bats=previous.at_bats + int(not walk and not sacrifice),
+                at_bats=previous.at_bats + int(not walk and not sacrifice and not no_at_bat),
                 hits=previous.hits + int(hit),
                 runs=previous.runs,
                 rbi=previous.rbi + (
                     0 if event.event_type == "error" else event.runs_scored
                 ),
                 walks=previous.walks + int(walk),
-                strikeouts=previous.strikeouts + int(event.event_type == "strikeout"),
+                strikeouts=previous.strikeouts + int(
+                    event.event_type == "strikeout" or event.out_type == "strikeout"
+                ),
             )
         for move in getattr(event, "runner_moves", ()):
             if move.scored:
@@ -112,14 +115,18 @@ def build_pitching_lines(
         if pitcher_id is None:
             continue
         previous = totals.get(pitcher_id, PitchingLine())
-        hit = isinstance(event, PlayEvent) and (
+        hit = isinstance(event, PlayEvent) and event.resolved and (
             event.hit_type is not None
             and event.defense_outcome not in {"out", "error"}
         )
-        walk = isinstance(event, PlayEvent) and (
+        walk = isinstance(event, PlayEvent) and event.resolved and (
             event.event_type == "walk" or event.classification == "walk"
         )
-        strikeout = isinstance(event, PlayEvent) and event.event_type == "strikeout"
+        strikeout = (
+            isinstance(event, PlayEvent)
+            and event.resolved
+            and (event.event_type == "strikeout" or event.out_type == "strikeout")
+        )
         totals[pitcher_id] = PitchingLine(
             outs=previous.outs + event.outs_added,
             hits=previous.hits + int(hit),

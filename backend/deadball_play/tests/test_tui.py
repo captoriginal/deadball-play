@@ -27,7 +27,9 @@ from deadball_play.layout import (
     column_widths,
     compose_modal,
     field_panel,
+    lineups_panel,
     narration_panel,
+    mlb_stats_panel,
 )
 from deadball_play.tui import (
     TerminalApp,
@@ -84,7 +86,7 @@ def test_main_screen_prioritizes_situation_and_only_legal_tactics():
     assert "Visitors Hitter 1" in screen
     assert "BT 30   OBT 39" in screen
     assert "Hosts Starter" in screen and "Pitch Die d8" in screen
-    assert "[S] Swing" in screen
+    assert "[S/Enter] Swing" in screen
     assert "[B] Bunt" not in screen
     assert "[H] Hit & Run" not in screen
     assert "[T] Steal" not in screen
@@ -123,13 +125,13 @@ def test_three_column_dashboard_separates_state_vertical_options_and_field():
     assert all(len(line) == 160 for line in lines)
     assert any("CURRENT STATE" in line[:first_separator] for line in lines)
     assert any(
-        first_separator < line.index("[S] Swing") < second_separator
+        first_separator < line.index("[S/Enter] Swing") < second_separator
         for line in lines
-        if "[S] Swing" in line
+        if "[S/Enter] Swing" in line
     )
     option_rows = {
         next(index for index, line in enumerate(lines) if option in line)
-        for option in ("[S] Swing", "[B] Bunt", "[H] Hit & Run", "[T] Steal")
+        for option in ("[S/Enter] Swing", "[B] Bunt", "[H] Hit & Run", "[T] Steal")
     }
     assert len(option_rows) == 4
     assert "FIELD" in screen
@@ -307,7 +309,39 @@ def test_third_column_cycles_field_narration_and_lineups():
     assert "Wesley Quinn   " in lineups
     assert "Arthur Vaughn   " in lineups
     view.toggle()
+    assert "MLB STATS" in app.dashboard_screen(view, width=160, height=47)
+    view.toggle()
     assert view.context_mode == "field"
+
+
+def test_mlb_stats_panel_lists_full_roster_and_marks_used_source_bench():
+    document = load_demo_game().to_dict()
+    away = document["teams"]["away"]
+    lineup_ids = {slot["player_id"] for slot in away["lineup"]}
+    bench = next(
+        player
+        for player in away["roster"]
+        if player["role"] == "position_player"
+        and player["player_id"] not in lineup_ids
+    )
+    bench["appeared_in_source_game"] = True
+    bench["mlb_stats"] = {
+        "games": 82,
+        "average": 0.275,
+        "on_base_percentage": 0.351,
+        "home_runs": 9,
+        "doubles": 14,
+        "stolen_bases": 3,
+    }
+    state = initialize_game(load_generated_game(document))
+
+    panel = "\n".join(mlb_stats_panel(state, 100))
+    lineups = "\n".join(lineups_panel(state, 100))
+
+    assert bench["name"] + "*" in panel
+    assert bench["name"] + "*" in lineups
+    assert ".275" in panel and ".351" in panel
+    assert "MLB PITCHER STATS" in panel
 
 
 def test_final_modal_is_centered_and_keeps_complete_right_border():

@@ -907,6 +907,112 @@ command, with no legacy test group omitted from the Version 1 result.
 
 ---
 
+# Phase 19 — MLB Automatic Runner
+
+## Goal
+
+Match MLB's regular-season extra-inning runner procedure while preserving
+empty-base postseason extra innings.
+
+## Implement
+
+- preserve MLB `gameType` from schedule cache through the canonical Play JSON
+- migrate existing Web databases with a nullable `game_type` column
+- place the active batting-order player immediately before the scheduled
+  leadoff hitter on second at the start of each regular-season extra half
+- permit the normal pinch-runner substitution for that player
+- keep postseason, spring, and exhibition extra innings empty
+- narrate the automatic runner at the inning transition
+- treat older game files without `game_type` as regular season for compatibility
+
+## Rulebook Use
+
+None. This is an MLB game-structure procedure layered around Deadball's play
+resolution. No Deadball table or numeric boundary changes.
+
+## Done When
+
+Regular-season tenth and later half-innings identify the runner from the live
+substituted batting order, postseason games retain empty bases, and the Web,
+cache, export, save, narration, and complete-game paths remain deterministic.
+
+---
+
+# Phase 20 — Oddities and MLB Pitcher Minimum
+
+## Goal
+
+Complete the optional Second Edition Oddities module and add a switchable,
+current MLB-style minimum for pitcher appearances.
+
+## Implement
+
+- resolve MSS 1 and 99 through the complete 2d10 Oddities table
+- retain the current batter when the table says the at-bat continues
+- record table and follow-up dice in structured history
+- persist injuries, D- overrides, batting penalties, temporary Pitch Die
+  changes, and steal modifiers through save/resume and undo
+- count only completed plate appearances toward the pitcher minimum
+- allow removal after three batters, during the inning-end removal window, or
+  for an incapacitating injury/illness
+- require the remaining batters if a sub-three-batter pitcher returns for the
+  next inning
+- enable both rules by default while retaining explicit disable switches
+
+## Rulebook Use
+
+Second Edition pages 23, 27-28, and 42-44. The three-batter enforcement is the
+optional real-life rule invited on page 23; its exact removal window follows
+Official Baseball Rule 5.10 procedure.
+
+## Done When
+
+Every Oddities total from 2 through 20 has a deterministic mechanical path,
+Oddity continuation does not consume a plate appearance, saves reproduce all
+active effects, and illegal early pitching changes are unavailable to both
+human and computer managers.
+
+---
+
+# Phase 20.5 — Generator-Aware Start Screen
+
+## Goal
+
+Make game setup available inside Deadball Play before Phase 21 without
+duplicating the established Deadball Web generator.
+
+## Implement
+
+- browse the Deadball Web MLB schedule by date
+- select a scheduled game or enter an MLB game ID directly
+- expose Standard, SABR, and Adaptive trait modes
+- optionally refresh cached statistics
+- generate both home and away PDF score sheets by default, or select one side
+- generate and play immediately or generate files only
+- always download the canonical Play JSON and PDF as a pair into `saves/`
+- show a standard outlined box around every start-screen menu
+- give away- and home-team generation separate progress steps
+- return to the main menu after generate-files-only completes
+- prefill the editable schedule field with the current date
+- recover start-screen setup failures back to the main menu
+- choose human or computer control for each side before a new game
+- browse generated `*DeadballPlay.json` files in `saves/` without listing sessions
+- preserve current MLB stats for the full roster in canonical Play JSON
+- add an MLB Stats context tab for hitters, bench, pitchers, and bullpen
+- mark source-game bench substitutions with an asterisk in lineup displays
+
+## Rulebook Use
+
+None. This is launch, generator integration, and artifact organization work.
+
+## Done When
+
+The no-argument start screen can reproduce the Deadball Web generation choices,
+the Web API remains the only ratings/PDF pipeline, and generated JSON/PDF pairs
+can be created or loaded without manually composing paths or commands.
+
+---
+
 # Version 1 Release Gate
 
 Version 1 should not be considered complete until:

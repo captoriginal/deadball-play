@@ -123,11 +123,13 @@ Additional pitcher and substitution state should also be initialized.
 At the beginning of each half-inning:
 
 1. Set outs to zero.
-2. Clear all bases.
-3. Identify the batting team.
-4. Identify the defensive team.
-5. Confirm the active pitcher.
-6. Identify the next batter from the team's persistent batting-order position.
+2. Clear all bases in regulation innings and postseason extra innings.
+3. In a regular-season extra inning, place the player immediately preceding
+   the scheduled leadoff hitter in the current batting order on second base.
+4. Identify the batting team.
+5. Identify the defensive team.
+6. Confirm the active pitcher.
+7. Identify the next batter from the team's persistent batting-order position.
 
 The batting order does **not** reset at the beginning of an inning.
 
@@ -448,7 +450,13 @@ Resolve using the Oddities system before continuing.
 
 If Oddities are disabled, the engine should follow the rulebook's non-Oddity interpretation.
 
-Oddities should be treated as an optional rules module rather than part of the core Version 1 loop unless specifically enabled.
+Oddities are an optional rules module. When enabled, the engine rolls 2d10,
+applies the result from the complete table, records every follow-up die, and
+either advances the batting order or preserves the at-bat as directed by the
+result.
+
+Persistent effects (injuries, rating changes, temporary Pitch Die changes,
+and steal modifiers) are explicit save-state data.
 
 ---
 
@@ -809,6 +817,9 @@ At minimum:
 - after nine innings, if the home team leads after the top of the ninth, no bottom half is played
 - after the bottom of the ninth, if one team leads, the game ends
 - if tied, continue into extra innings
+- every regular-season extra half-inning starts with MLB's automatic runner on
+  second: the active player immediately preceding the scheduled leadoff hitter
+- postseason extra innings begin with empty bases
 - in extra innings, continue until a complete game-ending condition is reached
 
 Deadball Play should initially follow ordinary baseball inning logic unless a specific Deadball rule modifies it.

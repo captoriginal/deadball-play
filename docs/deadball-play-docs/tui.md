@@ -102,7 +102,7 @@ Column 2 must remain vertical rather than wrapping actions across rows. Column 1
 owns every prompt; questions should not jump between columns. The scorekeeping
 pause also appears in Column 1 while Columns 2 and 3 remain useful.
 
-Column 3 has three tabbed modes:
+Column 3 has four tabbed modes:
 
 - **Field** uses most of the available column height for an expanded diamond.
   It names all nine active defenders at their positions and gives each base a
@@ -113,9 +113,14 @@ Column 3 has three tabbed modes:
   the user has scrolled upward.
 - **Box Score / Lineups** shows both live batting orders, bench/removed players,
   and the full pitching staff. Batter lines include AB, R, H, RBI, BB, and K;
-  pitcher lines include IP, H, R, BB, and K.
+  pitcher lines include IP, H, R, BB, and K. It includes every rostered bench
+  player and bullpen pitcher; an asterisk marks a bench player who appeared as
+  a substitute in the source MLB game.
+- **MLB Stats** shows the current generator-source statistics for every lineup,
+  bench, rotation, and bullpen player. Hitter lines include G, AVG, OBP, HR, 2B,
+  and SB. Pitcher lines include GS, IP, ERA, K/9, BB/9, and GB%.
 
-`Tab` cycles Field, Narration, and Box Score / Lineups. In Narration
+`Tab` cycles Field, Narration, Box Score / Lineups, and MLB Stats. In Narration
 mode, arrow keys and Page Up/Page Down should scroll without advancing the
 game. The selected mode and narration scroll position are presentation state;
 they do not belong in the rules engine or saved mechanical game state.
@@ -187,6 +192,33 @@ free to make a mound change, defensive substitution, or position switch and to
 inspect lineups, pitchers, history, or the relevant rule before continuing.
 The centered half-inning transition animates briefly, then holds its final frame
 until Enter is pressed.
+
+### Start Screen and Generation
+
+Launching `./scripts/deadball-play` without a game source opens the start
+screen. Every start-screen menu uses the standard outlined panel. It can browse
+the MLB schedule by date, generate a selected game, load a generated game JSON,
+resume a session save, or run the fictional demo.
+
+The schedule-date field is prefilled with the current local date and remains
+editable. A setup, file, network, or generation failure launched from the start
+screen displays a concise error and returns to the main menu after Enter rather
+than terminating into argparse usage text. Explicit CLI invocations keep normal
+command-line error behavior.
+
+Schedule browsing and generation call the running Deadball Web API; the TUI
+does not maintain a second ratings pipeline. It exposes the same Standard,
+SABR, and Adaptive trait modes and optional cached-statistics refresh, plus the
+API's PDF side selection. Both home and away score sheets are selected by
+default. A generation request always downloads its canonical Play JSON and
+selected PDF score sheets together. All live in `saves/` for now, with session
+state distinguished by the `.save.json` suffix. The picker lists only the
+generated `*DeadballPlay.json` files. A stepped indicator gives each team's
+ratings and roster generation its own step, followed by JSON, PDF, and save
+progress. Generate files only returns to the main menu after completion.
+
+Before playing a newly generated game or a newly loaded JSON game, the start
+screen asks whether each club is human- or computer-controlled.
 
 ---
 
