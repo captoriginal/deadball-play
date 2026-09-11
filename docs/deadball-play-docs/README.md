@@ -10,7 +10,7 @@ The intended minimal setup is:
 
 ## Project Status
 
-Current status: **Version 1 acceptance, installation, and three-column TUI complete**
+Current status: **Version 1 RC1 — release gate, desktop compile, and interactive smoke test complete**
 
 Regular-season MLB games use the automatic runner on second in every extra
 half-inning; postseason games continue with empty bases.
@@ -191,6 +191,7 @@ Core project documents:
 - [`phase-20-review.md`](phase-20-review.md) — optional Oddities resolution and MLB-style pitcher minimum
 - [`phase-20.5-review.md`](phase-20.5-review.md) — Web-backed start-screen generation and paired save artifacts
 - [`version-1-acceptance.md`](version-1-acceptance.md) — release acceptance evidence and known legacy test exclusions
+- [`version-1-rc1.md`](version-1-rc1.md) — RC1 scope, verification, and promotion criteria
 - [`generator-backlog.md`](generator-backlog.md) — deferred generator and contract-integration work
 
 ## Guiding Principles

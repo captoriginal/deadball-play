@@ -1,6 +1,6 @@
 Metadata-Version: 2.4
 Name: deadball-generator
-Version: 0.1.0
+Version: 1.0.0rc1
 Summary: Python tools for generating Deadball baseball stats, games, and scorecards.
 Requires-Python: >=3.10
 Description-Content-Type: text/markdown

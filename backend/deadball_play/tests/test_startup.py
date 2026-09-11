@@ -41,11 +41,13 @@ def test_date_default_is_visible_in_portable_input_fallback():
     assert prompts == ["Game date: [2026-09-09]: "]
 
 
-def test_start_screen_maps_demo_and_resume_choices():
+def test_start_screen_maps_demo_and_manual_resume_choices(tmp_path):
     output = []
     demo = startup_arguments(lambda prompt: "4", output.append)
     answers = iter(("3", "saves/night-game.json"))
-    resume = startup_arguments(lambda prompt: next(answers), output.append)
+    resume = startup_arguments(
+        lambda prompt: next(answers), output.append, root=tmp_path
+    )
 
     assert demo == [
         "--demo",
@@ -57,6 +59,79 @@ def test_start_screen_maps_demo_and_resume_choices():
     assert any(line.startswith("┌") for line in output)
     assert any("│ DEADBALL PLAY" in line for line in output)
     assert not any("cached by Deadball Web" in line for line in output)
+
+
+def test_start_screen_resumes_most_recent_valid_save(tmp_path):
+    saves = tmp_path / "saves"
+    saves.mkdir()
+    older = saves / "older.save.json"
+    newest = saves / "newest.save.json"
+    document = {
+        "save_format_version": 1,
+        "generated_game": {
+            "teams": {
+                "away": {"name": "Visitors"},
+                "home": {"name": "Hosts"},
+            }
+        },
+        "current_state": {
+            "inning": 5,
+            "half": "top",
+            "away_score": 2,
+            "home_score": 1,
+            "result": None,
+        },
+    }
+    older.write_text(json.dumps(document), encoding="utf-8")
+    newest.write_text(json.dumps(document), encoding="utf-8")
+    older.touch()
+    newest.touch()
+    import os
+
+    os.utime(older, (1, 1))
+    os.utime(newest, (2, 2))
+
+    arguments = startup_arguments(
+        lambda prompt: "R", lambda message: None, root=tmp_path
+    )
+
+    assert arguments == ["--resume", str(newest), "--return-to-menu"]
+
+
+def test_saved_game_browser_shows_matchup_and_state(tmp_path):
+    saves = tmp_path / "saves"
+    saves.mkdir()
+    path = saves / "game.save.json"
+    path.write_text(
+        json.dumps(
+            {
+                "save_format_version": 1,
+                "generated_game": {
+                    "teams": {
+                        "away": {"name": "Visitors"},
+                        "home": {"name": "Hosts"},
+                    }
+                },
+                "current_state": {
+                    "inning": 5,
+                    "half": "top",
+                    "away_score": 2,
+                    "home_score": 1,
+                    "result": None,
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    output = []
+    answers = iter(("3", "1"))
+
+    arguments = startup_arguments(
+        lambda prompt: next(answers), output.append, root=tmp_path
+    )
+
+    assert arguments == ["--resume", str(path), "--return-to-menu"]
+    assert any("Visitors at Hosts" in line and "Top 5, 2-1" in line for line in output)
 
 
 def test_start_screen_browses_web_games_with_generator_options(monkeypatch):

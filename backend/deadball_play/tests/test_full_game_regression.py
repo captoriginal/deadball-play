@@ -300,6 +300,19 @@ def test_final_box_score_names_pitchers_and_archives_completed_game(tmp_path):
     assert "Losing pitcher:  Hosts Starter" in summary
     assert archive is not None and archive.exists()
     assert archive.parent.name == "played-games"
+    box_score = archive.with_name(
+        archive.name.removesuffix(".json") + ".box-score.csv"
+    )
+    recap = archive.with_name(archive.name.removesuffix(".json") + ".recap.md")
+    assert box_score.exists()
+    assert "section,team,player,PA,AB,R,H,RBI,BB,K,IP" in box_score.read_text()
+    assert recap.exists()
+    recap_text = recap.read_text()
+    assert (
+        f"**Final: Visitors {session.state.away_score}, "
+        f"Hosts {session.state.home_score}.**"
+    ) in recap_text
+    assert "Winning pitcher: Visitors Starter" in recap_text
 
 
 def test_daring_managers_complete_game_without_human_strategy_input(tmp_path):

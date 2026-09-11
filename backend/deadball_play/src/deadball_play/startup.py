@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date as calendar_date
+from datetime import date as calendar_date, datetime
 import json
 from pathlib import Path
 import sys
@@ -68,6 +68,13 @@ class GeneratedArtifacts:
         return (self.scorecard_path, *self.additional_scorecard_paths)
 
 
+@dataclass(frozen=True)
+class SavedSessionSummary:
+    path: Path
+    label: str
+    modified_at: datetime
+
+
 def startup_arguments(
     input_func: Callable[[str], str] = input,
     output_func: Callable[[str], None] = print,
@@ -86,8 +93,9 @@ def startup_arguments(
             (
                 "[1] Browse MLB games and generate JSON + PDF",
                 "[2] Load a new game JSON",
-                "[3] Resume a saved game",
+                "[3] Browse saved games",
                 "[4] Play the fictional demo",
+                "[R] Resume the most recent saved game",
                 "[I] Enter an MLB game ID directly",
                 "[Q] Quit",
             ),
@@ -115,9 +123,9 @@ def startup_arguments(
                     "--return-to-menu",
                 ]
         elif choice == "3":
-            path = input_func("Saved game path: ").strip()
+            path = _select_saved_session(input_func, output_func, root=root)
             if path:
-                return ["--resume", path, "--return-to-menu"]
+                return ["--resume", str(path), "--return-to-menu"]
         elif choice == "4":
             return [
                 "--demo",
@@ -125,6 +133,12 @@ def startup_arguments(
                 "saves/demo-game.save.json",
                 "--return-to-menu",
             ]
+        elif choice == "R":
+            sessions = _saved_sessions(root)
+            if sessions:
+                return ["--resume", str(sessions[0].path), "--return-to-menu"]
+            output_func("\nNo saved games were found in saves/.")
+            input_func("Press Enter to return to the start screen.")
         elif choice == "I":
             game_id = input_func("MLB game ID: ").strip()
             if game_id:
@@ -343,6 +357,62 @@ def _select_game_json(
                 output_func("Invalid file selection.")
                 return None
     return input_func("Generated game JSON path: ").strip() or None
+
+
+def _saved_sessions(root: Path) -> tuple[SavedSessionSummary, ...]:
+    directory = root / "saves"
+    files = directory.glob("*.json") if directory.exists() else ()
+    summaries = []
+    for path in files:
+        try:
+            modified = datetime.fromtimestamp(path.stat().st_mtime)
+            document = json.loads(path.read_text(encoding="utf-8"))
+            if document.get("save_format_version") != 1:
+                continue
+            game = document["generated_game"]
+            state = document["current_state"]
+            away = game["teams"]["away"]["name"]
+            home = game["teams"]["home"]["name"]
+            if state.get("result") is not None:
+                situation = "Final"
+            else:
+                situation = f"{str(state['half']).title()} {state['inning']}"
+            label = (
+                f"{away} at {home} — {situation}, "
+                f"{state['away_score']}-{state['home_score']} — "
+                f"{modified.strftime('%b %d %H:%M')}"
+            )
+            summaries.append(SavedSessionSummary(path, label, modified))
+        except (KeyError, OSError, TypeError, ValueError, json.JSONDecodeError):
+            continue
+    return tuple(sorted(summaries, key=lambda item: item.modified_at, reverse=True))
+
+
+def _select_saved_session(
+    input_func: Callable[[str], str],
+    output_func: Callable[[str], None],
+    *,
+    root: Path,
+) -> Path | None:
+    sessions = _saved_sessions(root)
+    if sessions:
+        lines = [
+            f"[{index}] {summary.label}"
+            for index, summary in enumerate(sessions[:20], start=1)
+        ]
+        lines.extend(("[P] Enter another path", "[B] Back"))
+        _show_box(output_func, "SAVED GAMES", lines)
+        selection = input_func("\nChoose a saved game: ").strip().upper()
+        if selection == "B":
+            return None
+        if selection != "P":
+            try:
+                return sessions[int(selection) - 1].path
+            except (ValueError, IndexError):
+                output_func("Invalid saved-game selection.")
+                return None
+    path = input_func("Saved game path: ").strip()
+    return Path(path) if path else None
 
 
 def generate_web_artifacts(

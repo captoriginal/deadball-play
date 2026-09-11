@@ -42,7 +42,7 @@ npx @tauri-apps/cli build
 `scripts/package-backend.sh` bundles `backend/` and, if present, bundles repo-root `.venv` as `backend/.venv` so the app can start its own backend without relying on an externally running backend.
 Outputs (macOS):
 - `.app`: `src-tauri/target/release/bundle/macos/Deadball Desktop.app`
-- `.dmg`: `src-tauri/target/release/bundle/dmg/Deadball Desktop_0.1.0_x64.dmg` (requires `hdiutil` and a GUI-capable macOS; headless/sandboxed envs may fail)
+- `.dmg`: `src-tauri/target/release/bundle/dmg/Deadball Desktop_1.0.0-rc.1_x64.dmg` (requires `hdiutil` and a GUI-capable macOS; headless/sandboxed envs may fail)
 - Zip fallback if DMG is blocked:
   ```bash
   cd src-tauri/target/release/bundle/macos

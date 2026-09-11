@@ -36,6 +36,7 @@ from deadball_core import (
 )
 
 from .narration import NarrationResult, Narrator
+from .exports import export_postgame
 from .demo import load_demo_game
 from .layout import (
     DashboardView,
@@ -962,13 +963,19 @@ class TerminalApp:
         path = self.played_games_dir / (
             f"{game.game_date}-{away}-at-{home}-{stamp}.json"
         )
-        self._played_game_path = (
+        archive = (
             self.session.save(path)
             if self.session.autosave_path is None
             else self.session.save_copy(path)
         )
-        self._notice = f"Final game saved to {self._played_game_path}."
-        return self._played_game_path
+        exports = export_postgame(self.session, archive)
+        self._played_game_path = archive
+        self._postgame_exports = exports
+        self._notice = (
+            f"Final game saved to {archive}; box score: {exports.box_score_path}; "
+            f"recap: {exports.recap_path}."
+        )
+        return archive
 
     def _narration_log(self) -> list[str]:
         if not self.session.history:

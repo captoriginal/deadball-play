@@ -198,7 +198,9 @@ until Enter is pressed.
 Launching `./scripts/deadball-play` without a game source opens the start
 screen. Every start-screen menu uses the standard outlined panel. It can browse
 the MLB schedule by date, generate a selected game, load a generated game JSON,
-resume a session save, or run the fictional demo.
+resume the most recent valid save, browse saved games by matchup and live state,
+or run the fictional demo. Corrupt or unrelated JSON files are omitted from the
+saved-game browser.
 
 The schedule-date field is prefilled with the current local date and remains
 editable. A setup, file, network, or generation failure launched from the start
@@ -225,6 +227,10 @@ The state display identifies the active autosave file and the latest successful
 write. Once current state is protected, the commands read `Save a copy` and
 `Quit`; otherwise they read `Save as` and `Save & quit`. Leaving an unfinished
 game confirms the exact path that can be resumed later.
+
+After the final scorekeeping confirmation, Deadball Play archives the complete
+session in `played-games/` and writes a CSV box score plus a Markdown recap with
+the line score, pitchers of record, and scoring plays beside it.
 
 ---
 

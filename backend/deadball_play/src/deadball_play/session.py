@@ -38,7 +38,7 @@ from deadball_core import (
 
 
 SAVE_FORMAT_VERSION = 1
-APPLICATION_VERSION = "0.1.0"
+APPLICATION_VERSION = "1.0.0rc1"
 RULESET_ID = "deadball_second_edition_modern"
 DEFAULT_COMPUTER_DARING = 10
 

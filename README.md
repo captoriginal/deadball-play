@@ -47,8 +47,12 @@ During play, the active autosave path and latest successful write are visible.
 Saved sessions offer `Save a copy` and `Quit`; unsaved sessions offer `Save as`
 and `Save & quit`, with the protected path confirmed before an unfinished game
 closes.
-Completed games are archived in `played-games/`. A stepped progress indicator
-reports each team's ratings/roster work, downloads, and local saving. Choosing
+The start screen can resume the most recently modified valid save immediately,
+or browse valid saves by matchup, inning, score, and modification time.
+Completed games write a resumable JSON archive, CSV box score, and Markdown
+recap together under `played-games/`.
+A stepped progress indicator reports each team's ratings/roster work,
+downloads, and local saving. Choosing
 Generate files only returns to the start screen after the bundle is written.
 The schedule date starts as an editable, prefilled current date. A failed
 start-screen load or generation reports the problem and returns to the menu;
@@ -148,7 +152,7 @@ VITE_API_BASE_URL=http://127.0.0.1:8000
   ```
   Outputs:
   - `.app`: `src-tauri/target/release/bundle/macos/Deadball Desktop.app`
-  - `.dmg`: `src-tauri/target/release/bundle/dmg/Deadball Desktop_0.1.0_x64.dmg` (requires `hdiutil`; may be unavailable in headless/sandboxed environments)
+  - `.dmg`: `src-tauri/target/release/bundle/dmg/Deadball Desktop_1.0.0-rc.1_x64.dmg` (requires `hdiutil`; may be unavailable in headless/sandboxed environments)
   - Zip fallback (if DMG is blocked): `cd src-tauri/target/release/bundle/macos && ditto -c -k --sequesterRsrc --keepParent "Deadball Desktop.app" "../Deadball-Desktop-macos.zip"`
 
 ## More Documentation

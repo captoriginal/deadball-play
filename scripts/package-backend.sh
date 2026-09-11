@@ -8,7 +8,17 @@ mkdir -p src-tauri/resources
 STAGE_DIR="$(mktemp -d)"
 trap 'rm -rf "$STAGE_DIR"' EXIT
 
-cp -R backend "$STAGE_DIR/backend"
+mkdir -p "$STAGE_DIR/backend"
+rsync -a \
+  --exclude '.env' \
+  --exclude '*.db' \
+  --exclude '.cache' \
+  --exclude '.pytest_cache' \
+  --exclude '__pycache__' \
+  --exclude 'data/generated' \
+  --exclude 'data/raw' \
+  --exclude '.venv' \
+  backend/ "$STAGE_DIR/backend/"
 
 if [ ! -d "$STAGE_DIR/backend/.venv" ] && [ -d ".venv" ]; then
   echo "Including repo .venv as backend/.venv in bundle archive"
