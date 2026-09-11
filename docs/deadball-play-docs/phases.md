@@ -1013,6 +1013,46 @@ can be created or loaded without manually composing paths or commands.
 
 ---
 
+# Phase 21 — Standalone Launch and Shared Generation Service
+
+## Goal
+
+Let Deadball Play own its complete launch experience while keeping one canonical
+generation pipeline shared with Deadball Web.
+
+## Implement
+
+- reuse an already-running local Web backend when available
+- otherwise start a private backend only when schedule or generation access is needed
+- wait for backend health before retrying the original request
+- keep the managed backend alive across returns to the start screen
+- stop only the process started by Deadball Play when the application exits
+- preserve remote `--web-base-url` behavior without launching a local fallback
+- show the active autosave path and most recent successful autosave status
+- replace redundant `Save` with `Save as` or `Save a copy` when an autosave path exists
+- label `Save & quit` as `Quit` when all current session state is already autosaved
+- confirm the protected save location when leaving an unfinished game
+- extract schedule, generation, Play JSON, and scorecard orchestration from the
+  API routes into a shared application service
+- call that shared service directly from the TUI and from the Web API
+- remove the TUI's final HTTP/backend-process dependency after parity testing
+
+## Current Checkpoint
+
+Complete. Schedule lookup, generation, Play JSON export, and scorecard rendering
+now live in one application service used directly by both the TUI and Web API.
+The local TUI has no HTTP or backend-process dependency; remote API overrides
+remain supported. JSON/PDF parity, cache behavior, autosave status, save-copy
+behavior, and protected-path quit confirmation are covered by the release tests.
+
+## Done When
+
+The user can browse, generate, and play from one command without manually
+starting another process, and both interfaces consume the same non-HTTP service
+with byte-equivalent artifacts and unchanged caches.
+
+---
+
 # Version 1 Release Gate
 
 Version 1 should not be considered complete until:

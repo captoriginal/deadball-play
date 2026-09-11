@@ -1,6 +1,10 @@
 import json
 from datetime import date
 from pathlib import Path
+from unittest.mock import Mock
+from urllib.error import HTTPError, URLError
+
+import pytest
 
 from deadball_play.startup import (
     GeneratedArtifacts,
@@ -8,6 +12,7 @@ from deadball_play.startup import (
     generate_web_artifacts,
     startup_arguments,
 )
+from deadball_play import startup
 from deadball_play.tui import main
 
 
@@ -177,6 +182,7 @@ def test_web_generation_writes_shell_safe_game_and_scorecard_paths(
 
     result = generate_web_artifacts(
         "123",
+        base_url="https://example.test/api",
         root=tmp_path,
         trait_mode="adaptive",
         force=True,
@@ -224,7 +230,12 @@ def test_web_generation_downloads_both_scorecard_sides_by_default(
 
     monkeypatch.setattr("deadball_play.startup.urlopen", fake_urlopen)
 
-    result = generate_web_artifacts("456", root=tmp_path, progress_func=progress.append)
+    result = generate_web_artifacts(
+        "456",
+        base_url="https://example.test/api",
+        root=tmp_path,
+        progress_func=progress.append,
+    )
 
     assert [path.name for path in result.scorecard_paths] == [
         "2026-09-06-AwayTeam-at-HomeTeam-DeadballPlay-home.pdf",
@@ -244,6 +255,84 @@ def test_web_generation_downloads_both_scorecard_sides_by_default(
         "[#####-] 5/6 Downloading away PDF score sheet...",
         "[######] 6/6 Saving artifact bundle...",
     ]
+
+
+def test_local_schedule_uses_shared_service_without_http(monkeypatch):
+    game = Mock(
+        game_id="123",
+        game_date=date(2026, 9, 10),
+        game_type="R",
+        home_team="Hosts",
+        home_team_short="Hosts",
+        away_team="Visitors",
+        away_team_short="Visitors",
+        description="Regular Season",
+    )
+    service = Mock()
+    service.list_games.return_value = Mock(items=(game,))
+    monkeypatch.setattr(startup, "_call_local_service", lambda callback: callback(service))
+    network = Mock(side_effect=AssertionError("HTTP must not be used for local service calls"))
+    monkeypatch.setattr(startup, "urlopen", network)
+
+    games = startup.list_web_games("2026-09-10")
+
+    assert games[0]["game_id"] == "123"
+    service.list_games.assert_called_once_with("2026-09-10")
+    network.assert_not_called()
+
+
+def test_local_generation_uses_one_shared_service_for_all_artifacts(
+    tmp_path, monkeypatch
+):
+    game = {
+        "schema_version": 1,
+        "game": {"game_date": "2026-09-10"},
+        "teams": {
+            "away": {"name": "Visitors"},
+            "home": {"name": "Hosts"},
+        },
+    }
+    service = Mock()
+    service.play_json.return_value = game
+    service.scorecard_pdf.side_effect = lambda game_id, side: f"%PDF-{side}".encode()
+    monkeypatch.setattr(startup, "_call_local_service", lambda callback: callback(service))
+    network = Mock(side_effect=AssertionError("HTTP must not be used for local generation"))
+    monkeypatch.setattr(startup, "urlopen", network)
+
+    artifacts = generate_web_artifacts("123", root=tmp_path)
+
+    service.generate_game.assert_called_once_with(
+        "123", force=False, trait_mode="standard"
+    )
+    service.play_json.assert_called_once_with("123")
+    assert service.scorecard_pdf.call_count == 2
+    assert artifacts.game_path.read_text().endswith("\n")
+    assert [path.read_bytes() for path in artifacts.scorecard_paths] == [
+        b"%PDF-home",
+        b"%PDF-away",
+    ]
+    network.assert_not_called()
+
+
+def test_remote_request_reports_connection_failure(monkeypatch):
+    monkeypatch.setattr(startup, "urlopen", Mock(side_effect=URLError("offline")))
+
+    with pytest.raises(ValueError, match="Could not reach Deadball Web"):
+        startup._request_json("https://example.test/api/games")
+
+
+def test_http_error_is_reported_without_process_management(monkeypatch):
+    error = HTTPError(
+        "http://127.0.0.1:8000/api/games/unknown",
+        404,
+        "Not Found",
+        {},
+        None,
+    )
+    monkeypatch.setattr(startup, "urlopen", Mock(side_effect=error))
+
+    with pytest.raises(ValueError, match="HTTP 404"):
+        startup._request_json("http://127.0.0.1:8000/api/games/unknown")
 
 
 def test_generate_only_downloads_bundle_without_starting_game(monkeypatch, capsys):

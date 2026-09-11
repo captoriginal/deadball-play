@@ -462,7 +462,7 @@ def test_line_mode_enter_swings_after_intro(tmp_path):
     )
     app = TerminalApp(
         session,
-        input_func=scripted_input("", "", "", "Q"),
+        input_func=scripted_input("", "", "", "Q", ""),
         output=StringIO(),
     )
 
@@ -478,7 +478,7 @@ def test_computer_offense_pauses_for_intro_and_continue_command(tmp_path):
         autosave_path=tmp_path / "computer.json",
     )
     prompts = []
-    responses = iter(("", "", "", "Q"))
+    responses = iter(("", "", "", "Q", ""))
     app = TerminalApp(
         session,
         input_func=lambda prompt="": (prompts.append(prompt), next(responses))[1],
@@ -533,7 +533,7 @@ def test_scripted_gameplay_confirms_scorecard_then_saves_and_quits(tmp_path):
     output = StringIO()
     app = TerminalApp(
         session,
-        input_func=scripted_input("", "S", "?", "", "", "Q"),
+        input_func=scripted_input("", "S", "?", "", "", "Q", ""),
         output=output,
     )
 
@@ -551,13 +551,42 @@ def test_unknown_command_never_advances_game(tmp_path):
     session = GameSession(state, autosave_path=path)
     app = TerminalApp(
         session,
-        input_func=scripted_input("Z", "Q"),
+        input_func=scripted_input("Z", "Q", ""),
         output=StringIO(),
     )
 
     assert app.run() == 0
     assert session.state == state
     assert session.history == ()
+
+
+def test_saved_game_shows_autosave_path_and_nonredundant_commands(tmp_path):
+    path = tmp_path / "protected.json"
+    session = GameSession(initial_state(), autosave_path=path)
+    session.save()
+    app = TerminalApp(session, output=StringIO())
+
+    screen = app.dashboard_screen(DashboardView(), width=160, height=47)
+
+    assert path.name in screen
+    assert "[K] Save a copy" in screen
+    assert "[Q] Quit" in screen
+    assert "Save & quit" not in screen
+
+
+def test_quit_confirms_unfinished_game_protected_path(tmp_path):
+    path = tmp_path / "protected.json"
+    prompts = []
+    session = GameSession(initial_state(), autosave_path=path)
+    session.save()
+    app = TerminalApp(
+        session,
+        input_func=lambda prompt="": (prompts.append(prompt), "")[1],
+        output=StringIO(),
+    )
+
+    assert app._quit()
+    assert str(path) in prompts[-1]
 
 
 def test_guided_pinch_hit_requires_selection_and_confirmation():

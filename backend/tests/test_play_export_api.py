@@ -9,6 +9,7 @@ from sqlmodel import Session, SQLModel, create_engine
 from app import models
 from app.api import routes
 from app.db import get_session
+from app.services.games import GameService
 
 
 POSITIONS = ("C", "1B", "2B", "3B", "SS", "LF", "CF", "RF", "DH")
@@ -104,6 +105,9 @@ def test_cached_web_game_exports_canonical_play_contract():
             )
         )
         session.commit()
+        service = GameService(session, allow_network=False)
+        direct_payload = json.loads(json.dumps(service.play_json("123")))
+        direct_pdf = service.scorecard_pdf("123", side="home")
 
     def sessions():
         with Session(engine) as session:
@@ -114,9 +118,13 @@ def test_cached_web_game_exports_canonical_play_contract():
     app.dependency_overrides[get_session] = sessions
     with TestClient(app) as client:
         response = client.get("/api/games/123/play.json")
+        pdf_response = client.get("/api/games/123/scorecard.pdf?side=home")
 
     assert response.status_code == 200, response.text
     payload = response.json()
+    assert payload == direct_payload
+    assert pdf_response.status_code == 200, pdf_response.text
+    assert pdf_response.content == direct_pdf
     assert payload["schema_version"] == 1
     assert payload["game"]["game_id"] == "mlb-123"
     assert payload["game"]["game_type"] == "D"

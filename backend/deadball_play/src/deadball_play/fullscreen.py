@@ -82,7 +82,7 @@ class FullscreenApp(TerminalApp):
                         self._undo()
                     elif _letter(key) == "K":
                         self._save()
-                    elif _letter(key) == "Q" and self._save():
+                    elif _letter(key) == "Q" and self._quit():
                         return 0
                     else:
                         self._notice = "The play is still awaiting scorecard confirmation."
@@ -401,15 +401,37 @@ class FullscreenApp(TerminalApp):
 
     def _save(self) -> bool:
         if self.session.autosave_path is None:
-            name = self._read_text("Save path (Esc cancels)")
+            name = self._read_text("Save as path (Esc cancels)")
             if not name:
                 self._notice = "Save cancelled."
                 return False
             path = self.session.save(Path(name).expanduser())
+            self._notice = f"Autosave enabled at {path}."
         else:
-            path = self.session.save()
-        self._notice = f"Saved to {path}."
+            name = self._read_text("Save a copy path (Esc cancels)")
+            if not name:
+                self._notice = "Save copy cancelled."
+                return False
+            path = self.session.save_copy(Path(name).expanduser())
+            self._notice = f"Saved a copy to {path}."
         return True
+
+    def _quit(self) -> bool:
+        if not self.session.is_saved:
+            if self.session.autosave_path is None:
+                name = self._read_text("Save as path before quitting (Esc cancels)")
+                if not name:
+                    self._notice = "Quit cancelled; the game is not saved."
+                    return False
+                self.session.save(Path(name).expanduser())
+            else:
+                self.session.save()
+        if self.session.state.is_final:
+            return True
+        assert self.session.autosave_path is not None
+        return self._confirm(
+            f"Quit? Your unfinished game is protected at {self.session.autosave_path}."
+        )
 
     def _read_text(self, prompt: str) -> str | None:
         value = ""

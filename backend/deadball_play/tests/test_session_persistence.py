@@ -69,6 +69,25 @@ def test_new_game_round_trips_before_first_pitch(tmp_path):
     assert not list(path.parent.glob("*.tmp"))
 
 
+def test_save_status_and_copy_preserve_active_autosave_path(tmp_path):
+    autosave = tmp_path / "active.json"
+    copy = tmp_path / "copy.json"
+    session = seeded_session(path=autosave)
+
+    assert not session.is_saved
+    assert str(autosave) in session.autosave_status
+    session.save()
+    assert session.is_saved
+    assert "Autosave: saved" in session.autosave_status
+
+    session.save_copy(copy)
+
+    assert copy.exists()
+    assert session.autosave_path == autosave
+    assert session.last_save_path == autosave
+    assert session.is_saved
+
+
 def test_active_oddities_state_round_trips(tmp_path):
     state = initial_state()
     state = replace(

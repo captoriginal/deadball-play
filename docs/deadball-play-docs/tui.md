@@ -206,10 +206,11 @@ screen displays a concise error and returns to the main menu after Enter rather
 than terminating into argparse usage text. Explicit CLI invocations keep normal
 command-line error behavior.
 
-Schedule browsing and generation call the running Deadball Web API; the TUI
-does not maintain a second ratings pipeline. It exposes the same Standard,
-SABR, and Adaptive trait modes and optional cached-statistics refresh, plus the
-API's PDF side selection. Both home and away score sheets are selected by
+Local schedule browsing and generation call the same application service as
+the Deadball Web API, without HTTP or a managed backend process. An explicitly
+remote `--web-base-url` continues to use HTTP. The TUI exposes the same Standard,
+SABR, and Adaptive trait modes and optional cached-statistics refresh, plus PDF
+side selection. Both home and away score sheets are selected by
 default. A generation request always downloads its canonical Play JSON and
 selected PDF score sheets together. All live in `saves/` for now, with session
 state distinguished by the `.save.json` suffix. The picker lists only the
@@ -219,6 +220,11 @@ progress. Generate files only returns to the main menu after completion.
 
 Before playing a newly generated game or a newly loaded JSON game, the start
 screen asks whether each club is human- or computer-controlled.
+
+The state display identifies the active autosave file and the latest successful
+write. Once current state is protected, the commands read `Save a copy` and
+`Quit`; otherwise they read `Save as` and `Save & quit`. Leaving an unfinished
+game confirms the exact path that can be resumed later.
 
 ---
 

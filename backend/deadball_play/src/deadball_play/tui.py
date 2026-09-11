@@ -109,7 +109,7 @@ class TerminalApp:
                     self._show(self.pending_screen())
                     command = self.input(
                         "Enter=recorded  [?] Rule  [Y] History  [U] Undo  "
-                        "[K] Save  [Q] Save & quit: "
+                        f"[K] {self._save_label()}  [Q] {self._quit_label()}: "
                     ).strip().upper()
                     if command == "":
                         self.session.confirm_scorekeeping()
@@ -122,7 +122,7 @@ class TerminalApp:
                         self._undo()
                     elif command == "K":
                         self._save()
-                    elif command == "Q" and self._save():
+                    elif command == "Q" and self._quit():
                         return 0
                     else:
                         self._notice = (
@@ -286,7 +286,7 @@ class TerminalApp:
         elif command == "K":
             self._save()
         elif command == "Q":
-            return self._save()
+            return self._quit()
         else:
             self._notice = "Unknown or unavailable command; game state was not changed."
         return False
@@ -634,15 +634,43 @@ class TerminalApp:
 
     def _save(self) -> bool:
         if self.session.autosave_path is None:
-            name = self.input("Save path (Enter cancels): ").strip()
+            name = self.input("Save as path (Enter cancels): ").strip()
             if not name:
                 self._notice = "Save cancelled."
                 return False
             path = self.session.save(Path(name).expanduser())
+            self._notice = f"Autosave enabled at {path}."
         else:
-            path = self.session.save()
-        self._notice = f"Saved to {path}."
+            name = self.input("Save a copy path (Enter cancels): ").strip()
+            if not name:
+                self._notice = "Save copy cancelled."
+                return False
+            path = self.session.save_copy(Path(name).expanduser())
+            self._notice = f"Saved a copy to {path}."
         return True
+
+    def _save_label(self) -> str:
+        return "Save a copy" if self.session.autosave_path is not None else "Save as"
+
+    def _quit_label(self) -> str:
+        return "Quit" if self.session.is_saved else "Save & quit"
+
+    def _quit(self) -> bool:
+        if not self.session.is_saved:
+            if self.session.autosave_path is None:
+                name = self.input("Save as path before quitting (Enter cancels): ").strip()
+                if not name:
+                    self._notice = "Quit cancelled; the game is not saved."
+                    return False
+                self.session.save(Path(name).expanduser())
+            else:
+                self.session.save()
+        if self.session.state.is_final:
+            return True
+        assert self.session.autosave_path is not None
+        return self._confirm(
+            f"Quit? Your unfinished game is protected at {self.session.autosave_path}."
+        )
 
     def _narration_for(self, index: int) -> NarrationResult:
         entry = self.session.history[index]
@@ -829,6 +857,7 @@ class TerminalApp:
             f"{home.short_name} {state.home_score}",
             f"Outs: {state.outs}",
             f"Runners: {_bases_text(state)}",
+            self.session.autosave_status,
         ]
         if not state.is_final:
             offense_state, offense_data = _team(state, _offense_side(state))
@@ -866,11 +895,15 @@ class TerminalApp:
                 "[?] Rule",
                 "[Y] Detailed history",
                 "[U] Undo",
-                "[K] Save",
-                "[Q] Save & quit",
+                f"[K] {self._save_label()}",
+                f"[Q] {self._quit_label()}",
             ]
         elif self.session.state.is_final:
-            options = ["[Y] Detailed history", "[K] Save", "[Q] Exit"]
+            options = [
+                "[Y] Detailed history",
+                f"[K] {self._save_label()}",
+                "[Q] Exit",
+            ]
         elif self._offense_is_computer():
             options = ["[Enter/S] Continue computer"]
             defense = self._defense_team_state()
@@ -885,8 +918,8 @@ class TerminalApp:
                     "[V] Pitchers",
                     "[Y] History",
                     "[?] Rule",
-                    "[K] Save",
-                    "[Q] Save & quit",
+                    f"[K] {self._save_label()}",
+                    f"[Q] {self._quit_label()}",
                 )
             )
         else:
@@ -913,7 +946,7 @@ class TerminalApp:
             f"Winning pitcher: {winner}",
             f"Losing pitcher:  {loser}",
             "",
-            "[Y] Detailed history   [K] Save   [Q] Exit",
+            f"[Y] Detailed history   [K] {self._save_label()}   [Q] Exit",
         ]
 
     def _archive_completed_game(self) -> Path | None:
@@ -929,7 +962,11 @@ class TerminalApp:
         path = self.played_games_dir / (
             f"{game.game_date}-{away}-at-{home}-{stamp}.json"
         )
-        self._played_game_path = self.session.save(path)
+        self._played_game_path = (
+            self.session.save(path)
+            if self.session.autosave_path is None
+            else self.session.save_copy(path)
+        )
         self._notice = f"Final game saved to {self._played_game_path}."
         return self._played_game_path
 
@@ -993,6 +1030,8 @@ def render_game_screen(
         ),
         f"Outs: {state.outs}    Runners: {_bases_text(state)}",
     ]
+    if session is not None:
+        lines.append(session.autosave_status)
     if not state.is_final:
         offense_state, offense_data = _team(state, _offense_side(state))
         defense_state, defense_data = _team(state, _defense_side(state))
@@ -1176,8 +1215,8 @@ def _command_options(
             "[Y] History",
             "[?] Rule",
             "[U] Undo",
-            "[K] Save",
-            "[Q] Save & quit",
+            f"[K] {'Save a copy' if session and session.autosave_path else 'Save as'}",
+            f"[Q] {'Quit' if session and session.is_saved else 'Save & quit'}",
         )
     )
     return commands
@@ -1320,17 +1359,17 @@ def _parser() -> argparse.ArgumentParser:
     source.add_argument(
         "--generate-game",
         metavar="MLB_GAME_ID",
-        help="generate through a running Deadball Web server and start the game",
+        help="generate through the shared service and start the game",
     )
     source.add_argument(
         "--generate-only",
         metavar="MLB_GAME_ID",
-        help="generate JSON and PDF through Deadball Web without starting a game",
+        help="generate JSON and PDF through the shared service without starting a game",
     )
     parser.add_argument(
         "--web-base-url",
         default="http://127.0.0.1:8000/api",
-        help="Deadball Web API used by generation commands",
+        help="optional remote Deadball Web API used instead of the local service",
     )
     parser.add_argument(
         "--trait-mode",

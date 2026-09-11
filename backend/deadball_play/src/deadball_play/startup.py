@@ -5,13 +5,55 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date as calendar_date
 import json
-import os
 from pathlib import Path
 import sys
 from typing import Callable
 from urllib.error import HTTPError, URLError
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlsplit
 from urllib.request import Request, urlopen
+
+
+PROJECT_ROOT = Path(__file__).resolve().parents[4]
+_LOCAL_ENGINE = None
+
+
+def _uses_local_service(base_url: str) -> bool:
+    parsed = urlsplit(base_url)
+    return (
+        parsed.scheme == "http"
+        and parsed.hostname in {"127.0.0.1", "localhost", "::1"}
+        and parsed.path.rstrip("/") == "/api"
+    )
+
+
+def _call_local_service(callback):
+    """Run one operation directly against the repository application service."""
+    global _LOCAL_ENGINE
+    backend = PROJECT_ROOT / "backend"
+    if str(backend) not in sys.path:
+        sys.path.insert(0, str(backend))
+    from sqlalchemy import inspect, text
+    from sqlmodel import Session, SQLModel, create_engine
+
+    from app import models  # noqa: F401 - register tables before create_all
+    from app.core.config import get_settings
+    from app.services.games import GameService
+
+    if _LOCAL_ENGINE is None:
+        database = (backend / "deadball_dev.db").resolve()
+        _LOCAL_ENGINE = create_engine(f"sqlite:///{database}")
+        SQLModel.metadata.create_all(_LOCAL_ENGINE)
+        columns = {
+            column["name"] for column in inspect(_LOCAL_ENGINE).get_columns("game")
+        }
+        if "game_type" not in columns:
+            with _LOCAL_ENGINE.begin() as connection:
+                connection.execute(text("ALTER TABLE game ADD COLUMN game_type VARCHAR"))
+    with Session(_LOCAL_ENGINE) as session:
+        service = GameService(
+            session, allow_network=get_settings().allow_generator_network
+        )
+        return callback(service)
 
 
 @dataclass(frozen=True)
@@ -101,14 +143,27 @@ def list_web_games(
     *,
     base_url: str = "http://127.0.0.1:8000/api",
 ) -> tuple[dict, ...]:
-    """Return scheduled MLB games exposed by the running Deadball Web API."""
+    """Return scheduled MLB games from the shared service or a remote Web API."""
     try:
         calendar_date.fromisoformat(game_date)
     except ValueError as exc:
         raise ValueError("Game date must use YYYY-MM-DD format.") from exc
-    response = _request_json(
-        f"{base_url}/games?{urlencode({'date': game_date})}"
-    )
+    if _uses_local_service(base_url):
+        result = _call_local_service(lambda service: service.list_games(game_date))
+        return tuple(
+            {
+                "game_id": game.game_id,
+                "game_date": str(game.game_date),
+                "game_type": game.game_type,
+                "home_team": game.home_team,
+                "home_team_short": game.home_team_short,
+                "away_team": game.away_team,
+                "away_team_short": game.away_team_short,
+                "description": game.description,
+            }
+            for game in result.items
+        )
+    response = _request_json(f"{base_url}/games?{urlencode({'date': game_date})}")
     items = response.get("items", [])
     if not isinstance(items, list) or any(not isinstance(item, dict) for item in items):
         raise ValueError("Deadball Web returned an invalid games list.")
@@ -302,7 +357,7 @@ def generate_web_artifacts(
     away_team_label: str = "Away team",
     home_team_label: str = "Home team",
 ) -> GeneratedArtifacts:
-    """Generate through a running Web backend and save the JSON and scorecard."""
+    """Generate through the shared local service or an explicitly remote API."""
     if trait_mode not in {"standard", "sabr", "adaptive"}:
         raise ValueError(f"Unsupported trait mode: {trait_mode}")
     if scorecard_side not in {"both", "home", "away"}:
@@ -318,13 +373,25 @@ def generate_web_artifacts(
 
     report(1, f"Generating {away_team_label} ratings and roster...")
     report(2, f"Generating {home_team_label} ratings and roster...")
-    _request_json(
-        f"{base_url}/games/{game_id}/generate",
-        method="POST",
-        body={"force": force, "trait_mode": trait_mode},
-    )
+    local = _uses_local_service(base_url)
+    if local:
+        _call_local_service(
+            lambda service: service.generate_game(
+                game_id, force=force, trait_mode=trait_mode
+            )
+        )
+    else:
+        _request_json(
+            f"{base_url}/games/{game_id}/generate",
+            method="POST",
+            body={"force": force, "trait_mode": trait_mode},
+        )
     report(3, "Downloading game JSON...")
-    game = _request_json(f"{base_url}/games/{game_id}/play.json")
+    game = (
+        _call_local_service(lambda service: service.play_json(game_id))
+        if local
+        else _request_json(f"{base_url}/games/{game_id}/play.json")
+    )
     game_info = game.get("game", {})
     teams = game.get("teams", {})
     date = str(game_info.get("game_date", "game"))
@@ -340,7 +407,13 @@ def generate_web_artifacts(
     for index, side in enumerate(sides, start=4):
         report(index, f"Downloading {side} PDF score sheet...")
         scorecards.append(
-            _request_bytes(
+            _call_local_service(
+                lambda service, selected=side: service.scorecard_pdf(
+                    game_id, side=selected
+                )
+            )
+            if local
+            else _request_bytes(
                 f"{base_url}/games/{game_id}/scorecard.pdf?"
                 f"{urlencode({'side': side})}"
             )
@@ -372,8 +445,11 @@ def _request_json(
         headers={"Content-Type": "application/json"},
     )
     try:
-        with urlopen(request, timeout=120) as response:
-            result = json.loads(response.read())
+        try:
+            with urlopen(request, timeout=120) as response:
+                result = json.loads(response.read())
+        except HTTPError:
+            raise
     except HTTPError as exc:
         detail = exc.read().decode("utf-8", errors="replace")
         raise ValueError(f"Deadball Web returned HTTP {exc.code}: {detail}") from exc

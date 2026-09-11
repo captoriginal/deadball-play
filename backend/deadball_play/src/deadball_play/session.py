@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, replace
+from datetime import datetime
 import json
 import os
 from pathlib import Path
@@ -103,12 +104,43 @@ class GameSession:
         config: SessionConfig | None = None,
         history: tuple[HistoryEntry, ...] = (),
         autosave_path: str | Path | None = None,
+        restored_from_save: bool = False,
     ) -> None:
         self.state = state
         self.rng = rng or RandomDice()
         self.config = config or SessionConfig()
         self.history = history
         self.autosave_path = Path(autosave_path) if autosave_path is not None else None
+        self._revision = 0
+        self._saved_revision = 0 if restored_from_save else -1
+        self.last_save_path = self.autosave_path if restored_from_save else None
+        self.last_save_at = (
+            datetime.fromtimestamp(self.autosave_path.stat().st_mtime)
+            if restored_from_save
+            and self.autosave_path is not None
+            and self.autosave_path.exists()
+            else None
+        )
+
+    @property
+    def is_saved(self) -> bool:
+        """Whether the current in-memory revision has a durable save."""
+        return self._saved_revision == self._revision and self.last_save_path is not None
+
+    @property
+    def autosave_status(self) -> str:
+        """Describe the protected path and the latest successful write."""
+        if self.autosave_path is None:
+            return "Autosave: not configured"
+        if self.is_saved and self.last_save_at is not None:
+            return (
+                f"Autosave: saved {self.last_save_at.strftime('%H:%M:%S')} to "
+                f"{self.autosave_path.name} ({self.autosave_path})"
+            )
+        return (
+            f"Autosave: pending for {self.autosave_path.name} "
+            f"({self.autosave_path})"
+        )
 
     @property
     def scorekeeping_confirmed(self) -> bool:
@@ -148,6 +180,7 @@ class GameSession:
         )
         self.state = result.new_state
         self.history = (*self.history, entry)
+        self._revision += 1
         self._autosave()
         return result
 
@@ -161,6 +194,7 @@ class GameSession:
             *self.history[:-1],
             replace(self.history[-1], scorekeeping_confirmed=True),
         )
+        self._revision += 1
         self._autosave()
 
     def undo(self) -> HistoryEntry:
@@ -171,6 +205,7 @@ class GameSession:
         self.state = entry.state_before
         self.rng.setstate(entry.rng_state_before)
         self.history = self.history[:-1]
+        self._revision += 1
         self._autosave()
         return entry
 
@@ -179,6 +214,7 @@ class GameSession:
         if not isinstance(config, SessionConfig):
             raise SessionError("config must be SessionConfig")
         self.config = config
+        self._revision += 1
         self._autosave()
 
     def save(self, path: str | Path | None = None) -> Path:
@@ -205,7 +241,24 @@ class GameSession:
                 temporary_path.unlink(missing_ok=True)
             raise SessionSaveError(f"could not save session to {target}: {exc}") from exc
         self.autosave_path = target
+        self.last_save_path = target
+        self.last_save_at = datetime.now()
+        self._saved_revision = self._revision
         return target
+
+    def save_copy(self, path: str | Path) -> Path:
+        """Write a copy without changing the active autosave destination."""
+        autosave_path = self.autosave_path
+        last_save_path = self.last_save_path
+        last_save_at = self.last_save_at
+        saved_revision = self._saved_revision
+        try:
+            return self.save(path)
+        finally:
+            self.autosave_path = autosave_path
+            self.last_save_path = last_save_path
+            self.last_save_at = last_save_at
+            self._saved_revision = saved_revision
 
     def to_document(self) -> dict[str, Any]:
         """Build the JSON-compatible, versioned hybrid snapshot document."""
@@ -250,7 +303,12 @@ class GameSession:
         except Exception as exc:
             raise SessionLoadError(f"could not load session from {source_path}: {exc}") from exc
         return cls(
-            state, rng=rng, config=config, history=history, autosave_path=source_path
+            state,
+            rng=rng,
+            config=config,
+            history=history,
+            autosave_path=source_path,
+            restored_from_save=True,
         )
 
     def _autosave(self) -> None:
