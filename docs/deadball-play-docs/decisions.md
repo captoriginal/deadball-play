@@ -1,12 +1,12 @@
 # Deadball Play — Architectural Decision Log
 
-## ADR — Keep Deadball Play in the Existing `deadball-web` Repository
+## ADR — Keep Deadball Play in the Existing `deadball-play` Repository
 
 **Status:** Accepted
 
 ### Decision
 
-Develop Deadball Play inside the existing `deadball-web` repository rather than creating a separate repository.
+Develop Deadball Play inside the existing `deadball-play` repository rather than creating a separate repository.
 
 Treat the codebase as a small monorepo with clean conceptual boundaries for:
 
@@ -113,7 +113,7 @@ Keeping score by hand is an important part of the intended experience. The playe
 
 ### Decision
 
-Deadball Play consumes game/team data from the existing `deadball-web` generator rather than duplicating player-rating generation.
+Deadball Play consumes game/team data from the existing `deadball-play` generator rather than duplicating player-rating generation.
 
 ### Rationale
 

@@ -2,7 +2,7 @@
 
 ## Outcome
 
-Deadball Play remains in `deadball-web`. The least disruptive layout is to keep
+Deadball Play remains in `deadball-play`. The least disruptive layout is to keep
 the existing generator intact and add two sibling Python packages under
 `backend/`:
 

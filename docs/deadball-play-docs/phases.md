@@ -4,7 +4,7 @@
 
 ## Repository Strategy for All Phases
 
-Deadball Play is part of the existing `deadball-web` repository.
+Deadball Play is part of the existing `deadball-play` repository.
 
 Do not create a new repository during these phases.
 
@@ -62,7 +62,7 @@ Understand the existing repository and establish boundaries for the new Deadball
 
 Inspect:
 
-- existing `deadball-web` architecture
+- existing `deadball-play` architecture
 - current generator entry points
 - generated game/team data structures
 - existing tests

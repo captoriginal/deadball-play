@@ -4,7 +4,7 @@
 
 ## Repository and Package Boundaries
 
-Deadball Play begins inside the existing `deadball-web` repository.
+Deadball Play begins inside the existing `deadball-play` repository.
 
 Treat the repository as a small monorepo:
 

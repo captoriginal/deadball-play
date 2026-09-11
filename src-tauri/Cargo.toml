@@ -1,7 +1,7 @@
 [package]
 name = "deadball-desktop"
 version = "1.0.0-rc.1"
-description = "Deadball Web Tauri wrapper"
+description = "Deadball Play Tauri wrapper"
 authors = ["deadball"]
 edition = "2021"
 

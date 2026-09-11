@@ -241,7 +241,7 @@ fn prepare_backend(app: &tauri::App) -> PathBuf {
 
     // Prefer a known development absolute path in debug mode only.
     if cfg!(debug_assertions) {
-        let dev_absolute = PathBuf::from("/Users/steve/dev/web/deadball-web/backend");
+        let dev_absolute = PathBuf::from("/Users/steve/dev/apps/deadball-play/backend");
         if dev_absolute.exists() {
             return dev_absolute;
         }

@@ -17,12 +17,12 @@ half-inning; postseason games continue with empty bases.
 
 ## Repository Strategy
 
-Deadball Play should be developed **inside the existing `deadball-web` repository**, not in a new repository.
+Deadball Play should be developed **inside the existing `deadball-play` repository**, not in a new repository.
 
 Treat the repository as a small monorepo with clean boundaries between the existing generator, a shared Deadball core, the terminal application, and the existing web app. A preferred conceptual structure is:
 
 ```text
-deadball-web/
+deadball-play/
 |
 +-- packages/
 |   +-- deadball_generator/
@@ -206,7 +206,7 @@ Core project documents:
 
 ## Existing Generator
 
-Deadball Play is intended to consume game/team data from the existing `deadball-web` project rather than duplicating MLB data retrieval or rating generation.
+Deadball Play is intended to consume game/team data from the existing `deadball-play` project rather than duplicating MLB data retrieval or rating generation.
 
 The generator determines:
 

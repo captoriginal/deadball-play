@@ -4,7 +4,7 @@
 
 ## Repository Strategy
 
-All Version 1 work should occur inside the existing `deadball-web` repository.
+All Version 1 work should occur inside the existing `deadball-play` repository.
 
 Phase 0 should inspect the actual tree and establish the least disruptive monorepo-style boundaries, conceptually similar to:
 
@@ -37,7 +37,7 @@ This document turns the current design into a concrete development sequence.
 
 The plan assumes:
 
-- the existing `deadball-web` generator remains the source of team/player ratings
+- the existing `deadball-play` generator remains the source of team/player ratings
 - Version 1 targets Modern Era Deadball Second Edition
 - the rules engine remains independent of the TUI
 - the paper score sheet remains central

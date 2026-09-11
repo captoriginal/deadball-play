@@ -37,7 +37,7 @@ There is also a Tauri desktop wrapper that bundles the frontend and starts the b
 
 ## 3. Monorepo Structure
 
-deadball-web/  
+deadball-play/
 ├─ backend/  
 │  ├─ app/ (FastAPI app, routes, config)  
 │  ├─ deadball_generator/ (embedded generator, CLI helpers)  

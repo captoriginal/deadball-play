@@ -4,7 +4,7 @@
 
 ## Repository Context
 
-Deadball Play will be built **inside the existing `deadball-web` repository**.
+Deadball Play will be built **inside the existing `deadball-play` repository**.
 
 The repository should evolve toward a monorepo-style organization with clear responsibilities:
 
@@ -124,7 +124,7 @@ This separation may eventually allow the same event stream to drive spoken play-
 
 Deadball Play should not duplicate the existing player-generation system.
 
-The current `deadball-web` project already converts real MLB information into Deadball players and game-specific data.
+The current `deadball-play` project already converts real MLB information into Deadball players and game-specific data.
 
 The intended relationship is:
 

@@ -4,7 +4,7 @@
 
 ## Repository Placement
 
-The rules engine should live in a reusable shared module/package inside the existing `deadball-web` repository, conceptually `deadball_core`.
+The rules engine should live in a reusable shared module/package inside the existing `deadball-play` repository, conceptually `deadball_core`.
 
 Preferred dependency direction:
 

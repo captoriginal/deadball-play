@@ -4,7 +4,7 @@
 
 ## Repository Contract
 
-Because the generator and gameplay code share the `deadball-web` repository, the generated-game schema should still be treated as a formal boundary rather than allowing Deadball Play to import generator internals indiscriminately.
+Because the generator and gameplay code share the `deadball-play` repository, the generated-game schema should still be treated as a formal boundary rather than allowing Deadball Play to import generator internals indiscriminately.
 
 Conceptually:
 
@@ -23,7 +23,7 @@ deadball_play
 
 The shared repository is an implementation convenience, not permission to blur responsibilities.
 
-This document defines the data handoff between the existing **deadball-web** generator and **Deadball Play**.
+This document defines the data handoff between the existing **deadball-play** generator and **Deadball Play**.
 
 ## Implemented Contract
 
@@ -133,7 +133,7 @@ Example:
 {
   "game_id": "mlb-2026-08-15-lad-sf",
   "game_date": "2026-08-15",
-  "source": "deadball-web",
+  "source": "deadball-play",
   "source_game_id": "123456",
   "season": 2026,
   "game_type": "R"
@@ -462,7 +462,7 @@ Example:
   "ratings_source": {
     "season": 2026,
     "mode": "standard",
-    "generated_by": "deadball-web"
+    "generated_by": "deadball-play"
   }
 }
 ```

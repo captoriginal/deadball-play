@@ -1,10 +1,10 @@
 # Deadball Play — Repository Directive
 
-You are working in the existing **`deadball-web` repository**.
+You are working in the existing **`deadball-play` repository**.
 
 **Do not create a new repository for Deadball Play.**
 
-Treat `deadball-web` as a small monorepo with clean conceptual boundaries:
+Treat `deadball-play` as a small monorepo with clean conceptual boundaries:
 
 - `deadball_generator` — existing MLB-to-Deadball conversion and generated game data
 - `deadball_core` — reusable game state, rules, legal actions, structured events, and rule traces
@@ -91,7 +91,7 @@ Keep these responsibilities separate.
 
 ### Team / Data Layer
 
-The existing `deadball-web` generator supplies:
+The existing `deadball-play` generator supplies:
 
 - game/team data
 - players
@@ -256,7 +256,7 @@ Begin with **Phase 0** from `phases.md`.
 For Phase 0:
 
 1. inspect the repository structure
-2. inspect the current `deadball-web` generator and its output path
+2. inspect the current `deadball-play` generator and its output path
 3. read the project documentation
 4. identify where the new Deadball Play modules should live
 5. propose the smallest clean package/module structure
